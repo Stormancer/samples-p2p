@@ -1,0 +1,20 @@
+﻿{
+  "assemblies": [
+    "bin/SmartFormat.dll"
+  ],
+  "nugets": [
+    //{
+    //  "repository": "url",
+    //  "package-id": "id"
+    //}
+  ],
+  "git": [
+    //{
+    //  "repository": "url",
+    //  "subpath": "subpath in repository"
+    //  "branch":"master"
+    //}
+
+  ]
+  
+}

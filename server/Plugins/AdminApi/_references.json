@@ -1,0 +1,6 @@
+﻿{
+  references: [
+    "Owin, Version=1.0.0.0, Culture=neutral, PublicKeyToken=f0ebd12fd5e55cc5",
+    "Microsoft.Owin"
+  ]
+}

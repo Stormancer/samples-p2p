@@ -22,12 +22,16 @@ Run Visual studio and build client-cpp either in release or debug. Please note t
 Usage
 =====
 
-client-cpp.exe <userName> <chatRoomId>
+    client-cpp.exe <userName> <chatRoomId>
 
 chatRoomId is restricted to alphanumeric characters, - and _ .
 
+Server application
+===================
+By default, the sample connects to http://gc3.stormancer.com , a test server. You can deploy the provided server application to any Stormancer grid version that supports at least the 1.17 server API surface.
+
 Server application config
-=========================
+--------------------------
 
     {
 		"serviceLocator": {
