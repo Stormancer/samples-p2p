@@ -25,3 +25,42 @@ Usage
 client-cpp.exe <userName> <chatRoomId>
 
 chatRoomId is restricted to alphanumeric characters, - and _ .
+
+Server application config
+=========================
+
+    {
+		"serviceLocator": {
+			"defaultMapping": {
+				"stormancer.authenticator": "authenticator",
+				"stormancer.plugins.gamefinder": "gamefinder-{ServiceName}"
+			}
+		},
+		"gameSession": {
+			"usep2p": true
+		},
+		"gamefinder": {
+			"rules": {
+				"filters": [
+					{
+						"config": "default"
+					}
+				],
+				"configs": {
+					"default": {
+						"totalPlayers": 10000
+					}
+				}
+			},
+			"configs": {
+				"default": {
+					"teamSize": 1,
+					"readyCheck": {
+						"enabled": false,
+						"timeout": 10
+					},
+					"interval": 1
+				}
+			}
+		}
+	}
