@@ -1,0 +1,69 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Fichiers sources">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Fichiers d%27en-tête">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Fichiers de ressources">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Fichiers sources\plugins">
+      <UniqueIdentifier>{32f2d65a-0d0b-4fbc-8ebb-f9b9c620151a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Fichiers sources\plugins\Authentication">
+      <UniqueIdentifier>{53cc9bd4-3d79-426a-8a02-8467d7bfbfd0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Fichiers sources\plugins\GameSessions">
+      <UniqueIdentifier>{a3cb7dd1-e020-4c24-83b3-e298b545bdb0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Fichiers sources\plugins\GameFinder">
+      <UniqueIdentifier>{ca6fc8f9-10dd-4b68-8cb8-0c61cd52ef45}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="client-cpp.cpp">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\Authentication\AuthenticationException.cpp">
+      <Filter>Fichiers sources\plugins\Authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\Authentication\AuthenticationPlugin.cpp">
+      <Filter>Fichiers sources\plugins\Authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\Authentication\AuthenticationService.cpp">
+      <Filter>Fichiers sources\plugins\Authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\GameSession\GameSession_Impl.cpp">
+      <Filter>Fichiers sources\plugins\GameSessions</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\GameSession\GameSessionPlugin.cpp">
+      <Filter>Fichiers sources\plugins\GameSessions</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\GameSession\GameSessionService.cpp">
+      <Filter>Fichiers sources\plugins\GameSessions</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\GameFinder\GameFinder_Impl.cpp">
+      <Filter>Fichiers sources\plugins\GameFinder</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\GameFinder\GameFinderPlugin.cpp">
+      <Filter>Fichiers sources\plugins\GameFinder</Filter>
+    </ClCompile>
+    <ClCompile Include="plugins\private\GameFinder\GameFinderService.cpp">
+      <Filter>Fichiers sources\plugins\GameFinder</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
