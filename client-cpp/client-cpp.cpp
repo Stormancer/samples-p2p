@@ -9,11 +9,11 @@
 
 #include "Authentication/AuthenticationPlugin.h"
 #include "GameFinder/GameFinderPlugin.h"
-#include "GameSession/GameSessionPlugin.h"
+
 
 #include "Authentication/AuthenticationService.h"
 #include "GameFinder/GameFinder.h"
-#include "GameSession/GameSession.h"
+#include "GameSession/Gamesessions.hpp"
 
 #include "stormancer/Exceptions.h"
 #include "stormancer/Logger/ConsoleLoggerWindows.h"
@@ -32,7 +32,7 @@ struct GameFinderParameters
 bool sample_p2p(std::shared_ptr<Stormancer::IClient> client,std::string userId, std::string gameId)
 {
 	auto gameFinder = client->dependencyResolver().resolve<Stormancer::GameFinder>();
-	auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSession>();
+	auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSessions::GameSession>();
 
 	auto gameFoundTask = gameFinder->waitGameFound();
 	GameFinderParameters p;
@@ -86,7 +86,7 @@ bool sample_p2p(std::shared_ptr<Stormancer::IClient> client,std::string userId, 
 		std::getline(std::cin,input);
 		input = userId + ": " + input;
 		//Broadcast a message to all other P2P peers
-		gameSession->scene()->send(Stormancer::MatchAllP2P(), "hello", [serializer,input](Stormancer::obytestream& stream) {
+		gameSession->scene()->send(Stormancer::PeerFilter::matchAllP2P(), "hello", [serializer,input](Stormancer::obytestream& stream) {
 			serializer.serialize(stream, input);
 		});
 
@@ -123,13 +123,13 @@ pplx::task<void> sample_p2p_async(std::shared_ptr<Stormancer::IClient> client, s
 			throw Stormancer::PointerDeletedException();
 		}
 
-		auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSession>();
+		auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSessions::GameSession>();
 
 
 		return gameSession->connectToGameSession(gameFound.data.connectionToken);
 
 	})
-		.then([wClient](Stormancer::GameSessionConnectionParameters connectionInfos) {
+		.then([wClient](Stormancer::GameSessions::GameSessionConnectionParameters connectionInfos) {
 		//We capture a weak pointer so that we don't prevent the client from getting destroyed if the program decides so, 
 		//because we are running asynchronously, anything may happen.
 		auto client = wClient.lock();
@@ -150,7 +150,7 @@ pplx::task<void> sample_p2p_async(std::shared_ptr<Stormancer::IClient> client, s
 			//connect the game client to connectionInfos.endpoint
 		}
 
-		auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSession>();
+		auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSessions::GameSession>();
 
 		//Indicates that the game is ready. This is necessary because the host indicates by calling this function 
 		//that it's ready to accept connection from other game clients.
@@ -171,10 +171,10 @@ int main(int argc, char** argv)
 	//Add the plugins required to create a P2P application.
 	config->addPlugin(new Stormancer::AuthenticationPlugin());
 	config->addPlugin(new Stormancer::GameFinderPlugin());
-	config->addPlugin(new Stormancer::GameSessionPlugin());
+	config->addPlugin(new Stormancer::GameSessions::GameSessionsPlugin());
 	
 	//Uncomment to get detailed logging
-	//config->logger = std::make_shared<Stormancer::ConsoleLogger>();
+	config->logger = std::make_shared<Stormancer::ConsoleLogger>();
 
 	//Create a stormancer client
 	auto client = Stormancer::IClient::create(config);
