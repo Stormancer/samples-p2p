@@ -12,12 +12,12 @@ The application:
 
 Building the sample
 ===================
-The sample requires the 1.6 Stormancer library, available there:
-https://github.com/Stormancer/stormancer-sdk-cpp/releases/tag/v1.6
+The sample requires the Stormancer C++SDK , available there:
+https://www.stormancer.com/download
 
 The include an libs directory of the library must be copied in client-cpp/stormancer (the resulting directories must be client-cpp/stormancer/libs and client-cpp/stormancer/include
 
-Run Visual studio and build client-cpp either in release or debug. Please note that we only ship x64 libraries, but x86 versions could be built from https://github.com/Stormancer/stormancer-sdk-cpp .
+Run Visual studio and build client-cpp either in release or debug. Please note that we only ship x64 libraries, but x86 versions can be built from https://github.com/Stormancer/stormancer-sdk-cpp .
 
 Usage
 =====

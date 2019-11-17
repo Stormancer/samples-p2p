@@ -5,18 +5,18 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+
+//Stormancer includes
 #include "stormancer/IClient.h"
-
-#include "Authentication/AuthenticationPlugin.h"
-#include "GameFinder/GameFinderPlugin.h"
-
-
-#include "Authentication/AuthenticationService.h"
-#include "GameFinder/GameFinder.h"
-#include "GameSession/Gamesessions.hpp"
-
 #include "stormancer/Exceptions.h"
 #include "stormancer/Logger/ConsoleLoggerWindows.h"
+
+//Plugins
+#include "Users/Users.hpp"
+#include "GameFinder/GameFinder.hpp"
+#include "GameSession/Gamesessions.hpp"
+
+
 
 
 using namespace std::chrono_literals;
@@ -31,7 +31,7 @@ struct GameFinderParameters
 //Gamefinding an connection logic to the game session
 bool sample_p2p(std::shared_ptr<Stormancer::IClient> client,std::string userId, std::string gameId)
 {
-	auto gameFinder = client->dependencyResolver().resolve<Stormancer::GameFinder>();
+	auto gameFinder = client->dependencyResolver().resolve<Stormancer::GameFinder::GameFinderApi>();
 	auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSessions::GameSession>();
 
 	auto gameFoundTask = gameFinder->waitGameFound();
@@ -100,7 +100,7 @@ bool sample_p2p(std::shared_ptr<Stormancer::IClient> client,std::string userId, 
 pplx::task<void> sample_p2p_async(std::shared_ptr<Stormancer::IClient> client, std::string gameId)
 {
 	std::weak_ptr<Stormancer::IClient> wClient = client;
-	auto gameFinder = client->dependencyResolver().resolve<Stormancer::GameFinder>();
+	auto gameFinder = client->dependencyResolver().resolve<Stormancer::GameFinder::GameFinderApi>();
 
 
 	auto gameFoundTask = gameFinder->waitGameFound();
@@ -114,7 +114,7 @@ pplx::task<void> sample_p2p_async(std::shared_ptr<Stormancer::IClient> client, s
 		return gameFoundTask;
 	})
 
-		.then([wClient](Stormancer::GameFoundEvent gameFound) {
+		.then([wClient](Stormancer::GameFinder::GameFoundEvent gameFound) {
 		//We capture a weak pointer so that we don't prevent the client from getting destroyed if the program decides so, 
 		//because we are running asynchronously, anything may happen.
 		auto client = wClient.lock();
@@ -164,13 +164,21 @@ pplx::task<void> sample_p2p_async(std::shared_ptr<Stormancer::IClient> client, s
 
 int main(int argc, char** argv)
 {
+	if (argc < 3)
+	{
+		std::cout << "usage: client-cpp {userId} {gameId} \n";
+		std::cout << "userId : Id of the user in the game. The sample uses this identifier (no authentication)\n";
+		std::cout << "gameId : Id of the game the client is going to join.\n";
+		return -1;
+	}
+
 	//Create a configuration object to connect to the application samples/p2p on the test server gc3.stormancer.com
 	auto config = Stormancer::Configuration::create("http://gc3.stormancer.com", "samples", "p2p");
 	//Set the port used by the game server.
 	config->serverGamePort = 7777;
 	//Add the plugins required to create a P2P application.
-	config->addPlugin(new Stormancer::AuthenticationPlugin());
-	config->addPlugin(new Stormancer::GameFinderPlugin());
+	config->addPlugin(new Stormancer::Users::UsersPlugin());
+	config->addPlugin(new Stormancer::GameFinder::GameFinderPlugin());
 	config->addPlugin(new Stormancer::GameSessions::GameSessionsPlugin());
 	
 	//Uncomment to get detailed logging
@@ -179,25 +187,21 @@ int main(int argc, char** argv)
 	//Create a stormancer client
 	auto client = Stormancer::IClient::create(config);
 
-	if (argc < 3)
-	{
-		std::cout << "userId and gameId are required as cmd line argument.";
-		return -1;
-	}
+	
 	std::string userId = argv[1];
 	std::string gameId = argv[2];
 
 	//Setup the authentication system to use the deviceidentifier provider with the userId provider as cmdline arg.
-	auto auth = client->dependencyResolver().resolve<Stormancer::AuthenticationService>();
+	auto auth = client->dependencyResolver().resolve<Stormancer::Users::UsersApi>();
 	auth->getCredentialsCallback = [userId]() {
 
-		Stormancer::AuthParameters p;
+		Stormancer::Users::AuthParameters p;
 		p.type = "deviceidentifier";
 		p.parameters.emplace("deviceidentifier", userId);
 		return pplx::task_from_result(p);
 	};
 
-	auto sub = auth->connectionStateChanged.subscribe([](Stormancer::GameConnectionState state) {
+	auto sub = auth->connectionStateChanged.subscribe([](Stormancer::Users::GameConnectionState state) {
 		std::cout << "Game connection state changed : " << state << std::endl;
 	});
 

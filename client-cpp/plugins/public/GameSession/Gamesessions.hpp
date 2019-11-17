@@ -1,5 +1,5 @@
 #pragma once
-#include "Authentication/AuthenticationService.h"
+#include "Users/Users.hpp"
 #include "stormancer/IPlugin.h"
 #include "stormancer/msgpack_define.h"
 #include "stormancer/ITokenHandler.h"
@@ -465,7 +465,12 @@ namespace Stormancer
 				}
 
 				pplx::task_completion_event<void> _hostIsReadyTce;
-				pplx::task<GameSessionConnectionParameters> gameSessionReadyTask;
+				pplx::task_completion_event<GameSessionConnectionParameters> sessionReadyTce;
+
+				pplx::task<GameSessionConnectionParameters> sessionReadyAsync() {
+					return pplx::create_task(sessionReadyTce);
+				}
+
 				std::shared_ptr<IP2PScenePeer>	p2pHost;
 
 				Subscription allPlayerReady;
@@ -481,7 +486,11 @@ namespace Stormancer
 				{
 					cts.cancel();
 					_hostIsReadyTce.set_exception(pplx::task_canceled());
-
+					try
+					{
+						pplx::create_task(_hostIsReadyTce).get();
+					}
+					catch (...) {}
 
 				}
 			private:
@@ -493,10 +502,10 @@ namespace Stormancer
 				friend class ::Stormancer::GameSessions::GameSessionsPlugin;
 			public:
 				GameSession_Impl(std::weak_ptr<IClient> client, std::shared_ptr<ITokenHandler> tokens, std::shared_ptr<ILogger> logger)
-					: _wClient(client)
-					, _currentGameSession(nullptr)
-					, _logger(logger)
+					: _logger(logger)
 					, _tokens(tokens)
+					, _wClient(client)
+					, _currentGameSession(nullptr)
 				{
 				}
 
@@ -593,7 +602,7 @@ namespace Stormancer
 								}
 
 								auto hostReadyTce = c->_hostIsReadyTce;
-								return c->gameSessionReadyTask.then([wThat, hostReadyTce, cancellationToken](GameSessionConnectionParameters gameSessionConnectionParameters)
+								return c->sessionReadyAsync().then([wThat, hostReadyTce, cancellationToken](GameSessionConnectionParameters gameSessionConnectionParameters)
 									{
 										if (auto that = wThat.lock())
 										{
@@ -796,12 +805,11 @@ namespace Stormancer
 						{
 							throw pplx::task_canceled();
 						}
-						pplx::task_completion_event<GameSessionConnectionParameters> sessionReadyTce;
-						gameSessionContainer->gameSessionReadyTask = pplx::create_task(sessionReadyTce);
+						
 
 						auto service = scene->dependencyResolver().resolve<GameSessionService>();
 
-						gameSessionContainer->onRoleReceived = service->onRoleReceived.subscribe([wThat, sessionReadyTce, useTunnel, wContainer](P2PRole role)
+						gameSessionContainer->onRoleReceived = service->onRoleReceived.subscribe([wThat, useTunnel, wContainer](P2PRole role)
 							{
 								auto gameSessionContainer = wContainer.lock();
 								auto that = wThat.lock();
@@ -813,22 +821,24 @@ namespace Stormancer
 										gameSessionParameters.endpoint = gameSessionContainer->mapName;
 										gameSessionParameters.isHost = (role == P2PRole::Host);
 										that->onRoleReceived(gameSessionParameters);
-										sessionReadyTce.set(gameSessionParameters);
+										gameSessionContainer->sessionReadyTce.set(gameSessionParameters);
 									}
 								}
 							});
 						if (useTunnel)
 						{
-							gameSessionContainer->onTunnelOpened = service->onTunnelOpened.subscribe([wThat, sessionReadyTce](std::shared_ptr<Stormancer::P2PTunnel> p2pTunnel)
+							gameSessionContainer->onTunnelOpened = service->onTunnelOpened.subscribe([wThat, wContainer](std::shared_ptr<Stormancer::P2PTunnel> p2pTunnel)
 								{
-									if (auto that = wThat.lock())
+									auto gameSessionContainer = wContainer.lock();
+									auto that = wThat.lock();
+									if (gameSessionContainer && that)
 									{
 										GameSessionConnectionParameters gameSessionParameters;
 										gameSessionParameters.isHost = false;
 										gameSessionParameters.endpoint = p2pTunnel->ip + ":" + std::to_string(p2pTunnel->port);
 
 										that->onTunnelOpened(gameSessionParameters);
-										sessionReadyTce.set(gameSessionParameters);
+										gameSessionContainer->sessionReadyTce.set(gameSessionParameters);
 									}
 								});
 						}
@@ -914,22 +924,12 @@ namespace Stormancer
 
 			}
 
-
 			void sceneCreated(std::shared_ptr<Scene> scene) override
 			{
 				auto name = scene->getHostMetadata("stormancer.gamesession");
 				if (name.length() > 0)
 				{
 					scene->dependencyResolver().resolve<details::GameSessionService>()->initialize();
-				}
-			}
-
-			void sceneConnecting(std::shared_ptr<Scene> scene) override
-			{
-				auto name = scene->getHostMetadata("stormancer.gamesession");
-				if (name.length() > 0)
-				{
-
 					scene->dependencyResolver().resolve<GameSession>()->onConnectingToScene(scene);
 				}
 			}
@@ -948,12 +948,11 @@ namespace Stormancer
 				}
 			}
 
-			void registerClientDependencies(ContainerBuilder& builder)
+			void registerClientDependencies(ContainerBuilder& builder) override
 			{
 				builder.registerDependency < details::GameSession_Impl, IClient, ITokenHandler, ILogger >().as<GameSession>().singleInstance();
 			}
 		};
 
 	}
-
 }
