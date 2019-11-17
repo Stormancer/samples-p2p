@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -19,10 +19,12 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web.Http;
@@ -32,26 +34,49 @@ namespace Stormancer.Server.Users
     public class UsersAdminController : ApiController
     {
         private readonly IUserService _users;
+        private readonly IAuthenticationService auth;
 
-        public UsersAdminController(IUserService users)
+        public UsersAdminController(IUserService users, IAuthenticationService auth)
         {
             _users = users;
+            this.auth = auth;
+        }
+
+        [HttpGet]
+        [ActionName("getByClaim")]
+        public async Task<User> GetByClaim(string provider, string claimPath, string claimValue)
+        {
+            return await _users.GetUserByClaim(provider, claimPath, claimValue);
         }
 
         [HttpGet]
         [ActionName("search")]
-        public async Task<IEnumerable<UserViewModel>> Search(string query, int take = 20, int skip = 0)
+        public async Task<IEnumerable<UserViewModel>> Search(HttpRequestMessage request , int take = 20, int skip = 0)
         {
+            var query = request.GetQueryNameValuePairs();
             var users = await _users.Query(query, take, skip);
 
             return users.Select(user => new UserViewModel { id = user.Id });
         }
-
+        [HttpGet]
+        public Task<User> Get(string id)
+        {
+            return _users.GetUser(id);
+        }
         [HttpDelete]
         public Task Delete(string id)
         {
             return _users.Delete(id);
         }
+
+        [HttpDelete]
+        public async Task Unlink(string userId, string provider)
+        {
+            var user = await _users.GetUser(userId);
+            await auth.Unlink(user,provider);
+        }
+
+   
     }
 
 

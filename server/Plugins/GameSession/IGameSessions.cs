@@ -37,6 +37,7 @@ namespace Stormancer.Server.GameSession
     {
         Task Create(string template, string id, GameSessionConfiguration config);
         Task<string> CreateConnectionToken(string id, string userSessionId);
+        Task<string> CreateServerConnectionToken(string gameSessionId, Guid serverId);
     }
 
     internal class GameSessions : IGameSessions
@@ -70,6 +71,12 @@ namespace Stormancer.Server.GameSession
                 }, RetryPolicies.IncrementalDelay(4, TimeSpan.FromSeconds(200)), CancellationToken.None, ex => true);
             }
 
+        }
+
+        public Task<string> CreateServerConnectionToken(string gameSessionId, Guid serverId)
+        {
+           
+            return management.CreateConnectionToken(gameSessionId, serverId.ToByteArray(), "application/server-id");
         }
     }
 }

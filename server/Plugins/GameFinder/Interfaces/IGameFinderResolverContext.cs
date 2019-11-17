@@ -29,5 +29,15 @@ namespace Stormancer.Server.GameFinder
         Game Game { get; }
 
         Func<IGameFinderResolutionWriterContext,Task> ResolutionAction { get; set; }
+
+        /// <summary>
+        /// The Id of the scene created by this resolver for the <c>Game</c>, if any.
+        /// </summary>
+        /// <remarks>
+        /// This will usually be the Id of a game session.
+        /// The GameFinder will generate and send a connection token for this scene for each player.
+        /// Leave it empty if no scene was created.
+        /// </remarks>
+        string GameSceneId { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Server.Plugins.AdminApi;
 using System;
 using System.Collections.Generic;
@@ -33,8 +34,10 @@ namespace Stormancer.Server.Users
     {
         public void Configure(HttpConfiguration config)
         {
-            config.Routes.MapHttpRoute("users.search", "_users/search", new { Controller = "UsersAdmin", Action="search"});
+            config.Routes.MapHttpRoute("users.getByClaim", "_users/getByClaim", new { Controller = "UsersAdmin", Action = "getByClaim" });
+            config.Routes.MapHttpRoute("users.search", "_users/search", new { Controller = "UsersAdmin", Action = "search" });
             config.Routes.MapHttpRoute("users", "_users/{id}", new { Controller = "UsersAdmin" });
+            config.Routes.MapHttpRoute("users.auth", "_users/{userId}/_auth/{provider}", new { Controller = "UsersAdmin", Action = "Unlink" });
         }
     }
 }

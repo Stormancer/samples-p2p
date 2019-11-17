@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -33,6 +33,10 @@ using System.IO;
 
 namespace Server.Plugins.API
 {
+    public class Constants
+    {
+        public const string ApiRequestTag = "AutofacWebRequest";
+    }
     public enum ApiAccess
     {
         Public,
@@ -59,24 +63,43 @@ namespace Server.Plugins.API
     public interface IControllerFactory
     {
         void RegisterControllers();
+        
     }
 
     public class ControllerFactory<T> : IControllerFactory where T : ControllerBase
     {
-        private readonly ISceneHost _scene;
         
+        private readonly ISceneHost _scene;
 
+        
         public ControllerFactory(ISceneHost scene)
         {
             _scene = scene;
-          
+
         }
 
 
+        private async Task ExecuteConnectionRejected(IScenePeerClient client)
+        {
+            using (var scope = _scene.DependencyResolver.CreateChild(Constants.ApiRequestTag))
+            {
+                var controller = scope.Resolve<T>();
+                await controller.OnConnectionRejected(client);
+            }
+        }
+
+        private async Task ExecuteConnecting(IScenePeerClient client)
+        {
+            using (var scope = _scene.DependencyResolver.CreateChild(Constants.ApiRequestTag))
+            {
+                var controller = scope.Resolve<T>();
+                await controller.OnConnecting(client);
+            }
+        }
 
         private async Task ExecuteConnected(IScenePeerClient client)
         {
-            using (var scope = _scene.DependencyResolver.CreateChild("request"))
+            using (var scope = _scene.DependencyResolver.CreateChild(Constants.ApiRequestTag))
             {
                 var controller = scope.Resolve<T>();
                 await controller.OnConnected(client);
@@ -85,7 +108,7 @@ namespace Server.Plugins.API
 
         private async Task ExecuteDisconnected(DisconnectedArgs args)
         {
-            using (var scope = _scene.DependencyResolver.CreateChild("request"))
+            using (var scope = _scene.DependencyResolver.CreateChild(Constants.ApiRequestTag))
             {
                 var controller = scope.Resolve<T>();
                 await controller.OnDisconnected(args);
@@ -95,7 +118,7 @@ namespace Server.Plugins.API
 
         private async Task ExecuteRouteAction(ApiCallContext<Packet<IScenePeerClient>> ctx, Func<T, Packet<IScenePeerClient>, IDependencyResolver, Task> action)
         {
-            using (var scope = _scene.DependencyResolver.CreateChild("request", ctx.Builder))
+            using (var scope = _scene.DependencyResolver.CreateChild(Constants.ApiRequestTag, ctx.Builder))
             {
                 var controller = scope.Resolve<T>();
                 controller.Peer = ctx.Context.Connection;
@@ -121,7 +144,7 @@ namespace Server.Plugins.API
 
         private async Task ExecuteRouteAction(ApiCallContext<Packet<IScenePeer>> ctx, Func<T, Packet<IScenePeer>, IDependencyResolver, Task> action)
         {
-            using (var scope = _scene.DependencyResolver.CreateChild("request", ctx.Builder))
+            using (var scope = _scene.DependencyResolver.CreateChild(Constants.ApiRequestTag, ctx.Builder))
             {
                 var controller = scope.Resolve<T>();
                 //controller.Request = ctx;
@@ -147,7 +170,7 @@ namespace Server.Plugins.API
 
         private async Task ExecuteRpcAction(ApiCallContext<RequestContext<IScenePeerClient>> ctx, Func<T, RequestContext<IScenePeerClient>, IDependencyResolver, Task> action)
         {
-            using (var scope = _scene.DependencyResolver.CreateChild("request", ctx.Builder))
+            using (var scope = _scene.DependencyResolver.CreateChild(Constants.ApiRequestTag, ctx.Builder))
             {
                 var controller = scope.Resolve<T>();
                 try
@@ -179,7 +202,7 @@ namespace Server.Plugins.API
 
         private async Task ExecuteRpcAction(ApiCallContext<RequestContext<IScenePeer>> ctx, Func<T, RequestContext<IScenePeer>, IDependencyResolver, Task> action)
         {
-            using (var scope = _scene.DependencyResolver.CreateChild("request", ctx.Builder))
+            using (var scope = _scene.DependencyResolver.CreateChild(Constants.ApiRequestTag, ctx.Builder))
             {
                 var controller = scope.Resolve<T>();
                 try
@@ -212,6 +235,8 @@ namespace Server.Plugins.API
         {
             var type = typeof(T);
 
+            _scene.Connecting.Add(p => ExecuteConnecting(p));
+            _scene.ConnectionRejected.Add(p => ExecuteConnectionRejected(p));
             _scene.Connected.Add(p => ExecuteConnected(p));
             _scene.Disconnected.Add(args => ExecuteDisconnected(args));
             foreach (var method in type.GetMethods())
@@ -236,7 +261,7 @@ namespace Server.Plugins.API
                         Func<ApiCallContext<RequestContext<IScenePeerClient>>, Task> next = apiCallContext => ExecuteRpcAction(initialApiCallCtx, (c, pctx, r) => action(c, pctx));
                         foreach (var handler in _scene.DependencyResolver.Resolve<Func<IEnumerable<IApiHandler>>>()())
                         {
-                            next = apiCallCtx => handler.RunRpc(apiCallCtx, next);
+                            next = WrapWithHandler(handler.RunRpc, next);
                         }
                         return next(initialApiCallCtx);
                     });
@@ -254,7 +279,7 @@ namespace Server.Plugins.API
                         Func<ApiCallContext<Packet<IScenePeerClient>>, Task> next = apiCallContext => ExecuteRouteAction(initialApiCallCtx, (c, pctx, r) => action(c, pctx));
                         foreach (var handler in _scene.DependencyResolver.Resolve<Func<IEnumerable<IApiHandler>>>()())
                         {
-                            next = apiCallCtx => handler.RunFF(apiCallCtx, next);
+                            next = WrapWithHandler(handler.RunFF, next);
                         }
                         return next(initialApiCallCtx);
                     }, _ => _);
@@ -274,7 +299,7 @@ namespace Server.Plugins.API
                             Func<ApiCallContext<RequestContext<IScenePeer>>, Task> next = apiCallContext => ExecuteRpcAction(initialApiCallCtx, (c, pctx, r) => action(c, pctx));
                             foreach (var handler in _scene.DependencyResolver.Resolve<Func<IEnumerable<IApiHandler>>>()())
                             {
-                                next = apiCallCtx => handler.RunRpc(apiCallCtx, next);
+                                next = WrapWithHandler(handler.RunRpc, next);
                             }
 
                             return next(initialApiCallCtx);
@@ -297,7 +322,7 @@ namespace Server.Plugins.API
                         Func<ApiCallContext<Packet<IScenePeer>>, Task> next = apiCallContext => ExecuteRouteAction(initialApiCallCtx, (c, pctx, r) => action(c, pctx));
                         foreach (var handler in _scene.DependencyResolver.Resolve<Func<IEnumerable<IApiHandler>>>()())
                         {
-                            next = (ApiCallContext<Packet<IScenePeer>> c) => handler.RunFF(c, next);
+                            next = WrapWithHandler(handler.RunFF, next);
                         }
                         return next(initialApiCallCtx);
                     }, _ => _);
@@ -319,7 +344,7 @@ namespace Server.Plugins.API
             }
             var route = attr.Route ?? GetProcedureName(controllerType, method, false);
             var returnType = method.ReturnType;
-            if (attr.Type == ApiType.FireForget && (returnType != typeof(Task) || returnType == typeof(void)))
+            if (attr.Type == ApiType.FireForget && returnType != typeof(Task) && returnType != typeof(void))
             {
                 return false;
             }
@@ -339,7 +364,7 @@ namespace Server.Plugins.API
                         Func<ApiCallContext<Packet<IScenePeerClient>>, Task> next = apiCallContext => ExecuteRouteAction(initialApiCallCtx, (c, pctx, r) => a(c, pctx, r));
                         foreach (var handler in _scene.DependencyResolver.Resolve<Func<IEnumerable<IApiHandler>>>()())
                         {
-                            next = apiCallCtx => handler.RunFF(apiCallCtx, next);
+                            next = WrapWithHandler(handler.RunFF, next);
                         }
                         return next(initialApiCallCtx);
                     }, _ => _);
@@ -353,7 +378,7 @@ namespace Server.Plugins.API
                         Func<ApiCallContext<RequestContext<IScenePeerClient>>, Task> next = apiCallContext => ExecuteRpcAction(initialApiCallCtx, (c, pctx, r) => a(c, pctx, r));
                         foreach (var handler in _scene.DependencyResolver.Resolve<Func<IEnumerable<IApiHandler>>>()())
                         {
-                            next = apiCallCtx => handler.RunRpc(apiCallCtx, next);
+                            next = WrapWithHandler(handler.RunRpc, next);
                         }
                         return next(initialApiCallCtx);
                     }, true);
@@ -372,7 +397,7 @@ namespace Server.Plugins.API
                         Func<ApiCallContext<Packet<IScenePeer>>, Task> next = apiCallContext => ExecuteRouteAction(initialApiCallCtx, (c, pctx, r) => a(c, pctx, r));
                         foreach (var handler in _scene.DependencyResolver.Resolve<Func<IEnumerable<IApiHandler>>>()())
                         {
-                            next = (ApiCallContext<Packet<IScenePeer>> c) => handler.RunFF(c, next);
+                            next = WrapWithHandler(handler.RunFF, next);
                         }
                         return next(initialApiCallCtx);
                     }, _ => _);
@@ -388,7 +413,7 @@ namespace Server.Plugins.API
                             Func<ApiCallContext<RequestContext<IScenePeer>>, Task> next = apiCallContext => ExecuteRpcAction(initialApiCallCtx, (c, pctx, r) => a(c, pctx, r));
                             foreach (var handler in _scene.DependencyResolver.Resolve<Func<IEnumerable<IApiHandler>>>()())
                             {
-                                next = apiCallCtx => handler.RunRpc(apiCallCtx, next);
+                                next = WrapWithHandler(handler.RunRpc, next);
                             }
 
                             return next(initialApiCallCtx);
@@ -400,6 +425,10 @@ namespace Server.Plugins.API
             return true;
         }
 
+        private Func<ApiCallContext<TCtx>, Task> WrapWithHandler<TCtx>(Func<ApiCallContext<TCtx>, Func<ApiCallContext<TCtx>, Task>, Task> handler, Func<ApiCallContext<TCtx>, Task> current)
+        {
+            return apiCallCtx => handler(apiCallCtx, current);
+        }
 
         private bool IsRawRpc<TPeer>(MethodInfo method) where TPeer : IScenePeer
         {
@@ -460,7 +489,7 @@ namespace Server.Plugins.API
                 //public static Func<TRq, TReturn, IDependencyResolver> CreateWriteResultLambda<TRq, TReturn>()
                 var sendResultFunction = Expression.Constant(
                     typeof(ApiHelpers).GetRuntimeMethodExt("CreateWriteResultLambda", p => true).MakeGenericMethod(typeof(TRq), returnType).Invoke(null, new object[] { }),
-                    typeof(Action<,,>).MakeGenericType(typeof(TRq), returnType, typeof(IDependencyResolver))
+                    typeof(Func<,,,>).MakeGenericType(typeof(TRq), returnType, typeof(IDependencyResolver),typeof(Task))
                     );
 
                 //public static async Task ExecuteActionAndSendResult<TRq, TReturn>(T controller, TRq ctx, IDependencyResolver resolver, Func<T, TRq, IDependencyResolver, Task<TReturn>> executeControllerActionFunction, Action<TRq, TReturn, IDependencyResolver> sendResultAction)
@@ -483,17 +512,20 @@ namespace Server.Plugins.API
             public static void ReadObject<TData>(Packet<IScenePeerClient> ctx, out TData output, IDependencyResolver resolver) => output = ctx.ReadObject<TData>();
             public static void ReadObject<TData>(RequestContext<IScenePeerClient> ctx, out TData output, IDependencyResolver resolver) => output = ctx.ReadObject<TData>();
 
-            public static void WriteResult<TData>(RequestContext<IScenePeerClient> ctx, TData value, IDependencyResolver resolver) => ctx.SendValue(value);
-            public static void WriteResult<TData>(RequestContext<IScenePeer> ctx, TData value, IDependencyResolver resolver)
+            public static Task WriteResult<TData>(RequestContext<IScenePeerClient> ctx, TData value, IDependencyResolver resolver)
+            {
+                return ctx.SendValue(value);
+            }
+            public static Task WriteResult<TData>(RequestContext<IScenePeer> ctx, TData value, IDependencyResolver resolver)
             {
                 var serializer = resolver.Resolve<ISerializer>();
-                ctx.SendValue(s => serializer.Serialize(value, s));
+                return ctx.SendValue(s => serializer.Serialize(value, s));
             }
 
-            public static async Task ExecuteActionAndSendResult<TRq, TReturn>(T controller, TRq ctx, IDependencyResolver resolver, Func<T, TRq, IDependencyResolver, Task<TReturn>> executeControllerActionFunction, Action<TRq, TReturn, IDependencyResolver> sendResultAction)
+            public static async Task ExecuteActionAndSendResult<TRq, TReturn>(T controller, TRq ctx, IDependencyResolver resolver, Func<T, TRq, IDependencyResolver, Task<TReturn>> executeControllerActionFunction, Func<TRq, TReturn, IDependencyResolver,Task> sendResultAction)
             {
                 var result = await executeControllerActionFunction(controller, ctx, resolver);
-                sendResultAction(ctx, result, resolver);
+                await sendResultAction(ctx, result, resolver);
             }
 
             /// <summary>
@@ -582,7 +614,7 @@ namespace Server.Plugins.API
             }
 
             //Action<TRq, TReturn, IDependencyResolver>
-            public static Action<TRq, TReturn, IDependencyResolver> CreateWriteResultLambda<TRq, TReturn>()
+            public static Func<TRq, TReturn, IDependencyResolver,Task> CreateWriteResultLambda<TRq, TReturn>()
             {
                 var ctxType = typeof(TRq);
                 var returnType = typeof(TReturn);
@@ -592,7 +624,7 @@ namespace Server.Plugins.API
                 var data = Expression.Parameter(returnType, "value");
 
                 var writeResultMethod = typeof(ApiHelpers).GetRuntimeMethodExt("WriteResult", p => p[0].ParameterType == typeof(TRq));
-                return Expression.Lambda<Action<TRq, TReturn, IDependencyResolver>>(Expression.Call(writeResultMethod.MakeGenericMethod(returnType), ctx, data, resolver), ctx, data, resolver).Compile();
+                return Expression.Lambda<Func<TRq, TReturn, IDependencyResolver,Task>>(Expression.Call(writeResultMethod.MakeGenericMethod(returnType), ctx, data, resolver), ctx, data, resolver).Compile();
             }
         }
     }

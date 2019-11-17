@@ -1,4 +1,4 @@
-﻿// MIT License
+// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -19,13 +19,21 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-using MsgPack.Serialization;
+using Server.Plugins.Notification;
+using Stormancer.Core;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
-namespace Stormancer.Server.GameFinder
+namespace Stormancer
 {
-    public class GameFinderResponse
+   public static class NotificationExtensions
     {
-        [MessagePackMember(0)]
-        public string connectionToken;
+        public static void AddInAppNotifications(this ISceneHost scene)
+        {
+            scene.Metadata[NotificationPlugin.METADATA_KEY] = "enabled";
+        }
     }
 }

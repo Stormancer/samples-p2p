@@ -81,7 +81,7 @@ namespace Stormancer.Server.GameSession
     }
     class DedicatedServerAuthProvider : IAuthenticationProvider
     {
-        private const string PROVIDER_NAME = "dedicatedServer";
+        public const string PROVIDER_NAME = "dedicatedServer";
         private IEnvironment _env;
 
         public string Type => PROVIDER_NAME;
@@ -117,6 +117,21 @@ namespace Stormancer.Server.GameSession
         }
 
         public Task Setup(Dictionary<string, string> parameters)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task OnGetStatus(Dictionary<string, string> status, Session session)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task Unlink(User user)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<DateTime?> RenewCredentials(AuthenticationContext authenticationContext)
         {
             throw new NotImplementedException();
         }

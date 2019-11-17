@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -23,13 +23,14 @@ namespace Stormancer.Server.GameFinder
 {
     public class Player
     {
-        public Player(string userId)
+        public Player(string sessionId, string userId)
         {
             UserId = userId;
+            SessionId = sessionId;
         }
 
-        public string UserId { get; private set; }
-
+        public string UserId { get; }
+        public string SessionId { get; }
         public object Data { get; set; }
     }
 }

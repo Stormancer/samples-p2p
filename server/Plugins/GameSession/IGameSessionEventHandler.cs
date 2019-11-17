@@ -47,9 +47,9 @@ namespace Stormancer.Server.GameSession
 
         public ISceneHost Scene { get; }
         public string Id { get => Scene.Id; }
+        public string DedicatedServerPath { get; set; }
         public GameSessionConfiguration Config { get; }
         public IGameSessionService Service { get; }
-        public string DedicatedServerPath { get; set; }
     }
 
     public class GameSessionStartedCtx : GameSessionContext

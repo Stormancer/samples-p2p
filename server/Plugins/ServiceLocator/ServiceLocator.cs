@@ -28,6 +28,7 @@ using Stormancer.Server.Management;
 using Stormancer.Server.Users;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -38,10 +39,11 @@ namespace Stormancer.Plugins.ServiceLocator
         public Dictionary<string, string> DefaultMapping { get; set; } = new Dictionary<string, string>();
 
     }
-
+    
     internal class ServiceLocator : IServiceLocator
     {
         private readonly IEnvironment _env;
+        private readonly ISerializer serializer;
         private readonly ManagementClientAccessor _managementClientAccessor;
         private readonly Func<IEnumerable<IServiceLocatorProvider>> _handlers;
         private readonly ILogger _logger;
@@ -53,14 +55,16 @@ namespace Stormancer.Plugins.ServiceLocator
             ManagementClientAccessor managementClientAccessor,
             IEnvironment env,
             IConfiguration config,
+            ISerializer serializer,
             ILogger logger)
         {
             _env = env;
+            this.serializer = serializer;
             _managementClientAccessor = managementClientAccessor;
             _handlers = handlers;
             _logger = logger;
 
-            config.SettingsChanged += (sender, args) => Config_SettingsChanged(args);
+            //config.SettingsChanged += (sender, args) => Config_SettingsChanged(args);
             Config_SettingsChanged(config.Settings);
         }
 
@@ -73,23 +77,32 @@ namespace Stormancer.Plugins.ServiceLocator
         {
 
 
-            var sceneUri = await GetSceneId(serviceType, serviceName);
-
+            var sceneUri = await GetSceneId(serviceType, serviceName, session);
+            
             if (sceneUri == null)
             {
                 throw new ClientException("notFound");
             }
-
-            return await _managementClientAccessor.CreateConnectionToken(sceneUri);
+            using (var stream = new MemoryStream())
+            {
+                if (session == null)
+                {
+                    _logger.Log(LogLevel.Warn, "locator", "session is null", new { });
+                }
+                serializer.Serialize(session, stream);
+                var token = await _managementClientAccessor.CreateConnectionToken(sceneUri ,stream.ToArray(), "stormancer/userSession");
+                
+                return token;
+            }
         }
         
-        public async Task<string> GetSceneId(string serviceType, string serviceName)
+        public async Task<string> GetSceneId(string serviceType, string serviceName,Session session)
         {
             var handlers = _handlers();
-            var ctx = new ServiceLocationCtx { ServiceName = serviceName, ServiceType = serviceType };
-            await handlers.RunEventHandler(slp => slp.OnLocatingService(ctx), ex => _logger.Log(LogLevel.Error, "serviceLocator", "An error occured while executing the LocateService extensibility point", ex));
+            var ctx = new ServiceLocationCtx { ServiceName = serviceName, ServiceType = serviceType, Session = session };
+            await handlers.RunEventHandler(slp => slp.LocateService(ctx), ex => _logger.Log(LogLevel.Error, "serviceLocator", "An error occured while executing the LocateService extensibility point", ex));
 
-            if (ctx.SceneId == null && _config.DefaultMapping.TryGetValue(ctx.ServiceType, out var template))
+            if (string.IsNullOrEmpty(ctx.SceneId) && _config.DefaultMapping.TryGetValue(ctx.ServiceType, out var template))
             {
                 ctx.SceneId = Smart.Format(template, ctx);
             }

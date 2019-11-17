@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -51,6 +51,16 @@ namespace Server.Plugins.API
         protected internal virtual Task<bool> HandleException(ApiExceptionContext ctx)
         {
             return Task.FromResult(false);
+        }
+
+        protected internal virtual Task OnConnecting(IScenePeerClient client)
+        {
+            return Task.CompletedTask;
+        }
+
+        protected internal virtual Task OnConnectionRejected(IScenePeerClient client)
+        {
+            return Task.CompletedTask;
         }
 
         protected internal virtual Task OnConnected(IScenePeerClient peer)

@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -71,5 +72,16 @@ namespace Stormancer.Server.Users
         public Dictionary<string, string> AuthenticationContext { get; private set; }
 
         public Dictionary<string, byte[]> initialSessionData { get; } = new Dictionary<string, byte[]>();
+
+        /// <summary>
+        /// The date at which this authentication should be renewed.
+        /// </summary>
+        /// <remarks>
+        /// Leave it to null if this authentication doesn't need renewing.
+        /// </remarks>
+        public DateTime? ExpirationDate { get; set; } = null;
+
+        public Action<SessionRecord> OnSessionUpdated;
     }
 }
+

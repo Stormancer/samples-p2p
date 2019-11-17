@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using MsgPack.Serialization;
 using System;
 using System.Collections.Generic;
@@ -37,12 +38,34 @@ namespace Stormancer.Server.Users
         public Dictionary<string,string> Parameters { get; set; }
     }
 
+    public class RenewCredentialsParameters
+    {
+        [MessagePackMember(0)]
+        public Dictionary<string, string> Parameters { get; set; }
+    }
+
+    public class RememberDeviceParameters
+    {
+        [MessagePackMember(0)]
+        public string UserId { get; set; }
+        [MessagePackMember(1)]
+        public string UserDeviceId { get; set; }
+    }
+
     public interface IAuthenticationService
     {
         Task SetupAuth(AuthParameters auth);
         Task<LoginResult> Login(AuthParameters auth, IScenePeerClient peer, CancellationToken ct);
+        Task RememberDeviceFor2fa(RememberDeviceParameters auth, IScenePeerClient peer, CancellationToken ct);
         Dictionary<string, string> GetMetadata();
-
-      
+        Task<Dictionary<string, string>> GetStatus(IScenePeerClient peer);
+        Task Unlink(User user, string type);
+        /// <summary>
+        /// Renew the credentials of authenticated users, if needed.
+        /// </summary>
+        /// <param name="threshold">How much time in advance of expiration should credentials be renewed.</param>
+        /// <returns>The closest new credential expiration date.</returns>
+        Task<DateTime?> RenewCredentials(TimeSpan threshold);
     }
 }
+

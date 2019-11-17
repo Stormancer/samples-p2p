@@ -19,57 +19,162 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Newtonsoft.Json.Linq;
+using Server.Plugins.API;
+using Server.Plugins.Configuration;
+using Stormancer.Core;
 using Stormancer.Diagnostics;
-using Stormancer.Server.GameFinder;
+using Stormancer.Plugins;
 using Stormancer.Server.Users;
+using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
 namespace Stormancer.Server.Analytics
 {
-    public class AnalyticsEventHandler : IGameFinderEventHandler, IUserSessionEventHandler
+    public class InstrumentationConfig
+    {
+        public bool EnableApiInstrumentation { get; set; } = false;
+    }
+    public class AnalyticsEventHandler : IUserSessionEventHandler, IApiHandler
     {
         private readonly IAnalyticsService _analytics;
         private readonly ILogger _logger;
+        private readonly Stopwatch _watch = new Stopwatch();
+        private InstrumentationConfig _config;
 
-        public AnalyticsEventHandler(IAnalyticsService analytics, ILogger logger)
+
+        private void ApplySettings(dynamic config)
+        {
+            _config = (InstrumentationConfig)(config?.instrumentation?.ToObject<InstrumentationConfig>()) ?? new InstrumentationConfig();
+        }
+
+        public AnalyticsEventHandler(IAnalyticsService analytics, ILogger logger, IConfiguration configuration)
         {
             _analytics = analytics;
+            _watch.Start();
+            configuration.SettingsChanged += (_, settings) => ApplySettings(settings);
+            ApplySettings(configuration.Settings);
             _logger = logger;
         }
 
         public Task OnLoggedIn(LoginContext loginCtx)
         {
-            _analytics.Push("user-login", JObject.FromObject(new { UserId = loginCtx.Session.User.Id, PlatformId = loginCtx.Session.platformId }));
+            _analytics.Push("user", "login", JObject.FromObject(new { UserId = loginCtx.Session.User.Id, PlatformId = loginCtx.Session.platformId }));
             return Task.CompletedTask;
         }
 
         public Task OnLoggedOut(LogoutContext logoutCtx)
         {
-            _analytics.Push("user-logout", JObject.FromObject(new { UserId = logoutCtx.Session.User.Id, ConnnectedOn = logoutCtx.ConnectedOn }));
+            _analytics.Push("user", "logout", JObject.FromObject(new { UserId = logoutCtx.Session.User.Id, logoutCtx.ConnectedOn, duration = (DateTime.UtcNow - logoutCtx.ConnectedOn).TotalSeconds }));
             return Task.CompletedTask;
         }
 
-        public Task OnStart(SearchStartContext searchStartCtx)
+
+        public async Task RunRpc(ApiCallContext<RequestContext<IScenePeerClient>> ctx, Func<ApiCallContext<RequestContext<IScenePeerClient>>, Task> next)
         {
-            foreach (var group in searchStartCtx.Groups)
+            if (_config.EnableApiInstrumentation)
             {
-                _analytics.Push("gamefinder-start", JObject.FromObject(new { searchStartCtx.GameFinderId, players = group.Players.Count() }));
+                var start = _watch.ElapsedMilliseconds;
+                await next(ctx);
+                _analytics.Push("api", "rpc.cs", JObject.FromObject(new
+                {
+                    type = "RPC",
+                    scope = "ClientServer",
+                    inputSize = ctx.Context.InputStream.Length,
+                    route = ctx.Route,
+                    duration = _watch.ElapsedMilliseconds - start,
+                    SessionId = ctx.Context.RemotePeer.SessionId
+                }));
             }
+            else
+            {
+                await next(ctx);
+            }
+
+
+        }
+
+        public async Task RunRpc(ApiCallContext<RequestContext<IScenePeer>> ctx, Func<ApiCallContext<RequestContext<IScenePeer>>, Task> next)
+        {
+            if (_config.EnableApiInstrumentation)
+            {
+                var start = _watch.ElapsedMilliseconds;
+                await next(ctx);
+                _analytics.Push("api", "rpc.s2s", JObject.FromObject(new
+                {
+                    type = "RPC",
+                    scope = "S2S",
+                    inputSize = ctx.Context.InputStream.Length,
+                    route = ctx.Route,
+                    duration = _watch.ElapsedMilliseconds - start,
+                    SessionId = ctx.Context.RemotePeer.SceneId
+                }));
+
+            }
+            else
+            {
+                await next(ctx);
+            }
+        }
+
+        public async Task RunFF(ApiCallContext<Packet<IScenePeer>> ctx, Func<ApiCallContext<Packet<IScenePeer>>, Task> next)
+        {
+            if (_config.EnableApiInstrumentation)
+            {
+                var start = _watch.ElapsedMilliseconds;
+                await next(ctx);
+                _analytics.Push("api", "ff.s2s", JObject.FromObject(new
+                {
+                    type = "FireForget",
+                    scope = "S2S",
+                    inputSize = ctx.Context.Stream.Length,
+                    route = ctx.Route,
+                    duration = _watch.ElapsedMilliseconds - start,
+                    SessionId = ctx.Context.Connection.SceneId
+                }));
+
+            }
+            else
+            {
+                await next(ctx);
+            }
+        }
+
+        public async Task RunFF(ApiCallContext<Packet<IScenePeerClient>> ctx, Func<ApiCallContext<Packet<IScenePeerClient>>, Task> next)
+        {
+            if (_config.EnableApiInstrumentation)
+            {
+                var start = _watch.ElapsedMilliseconds;
+                await next(ctx);
+                _analytics.Push("api", "ff.cs", JObject.FromObject(new
+                {
+                    type = "FireForget",
+                    scope = "ClientServer",
+                    inputSize = ctx.Context.Stream.Length,
+                    route = ctx.Route,
+                    duration = _watch.ElapsedMilliseconds - start,
+                    SessionId = ctx.Context.Connection.SessionId
+                }));
+
+            }
+            else
+            {
+                await next(ctx);
+            }
+        }
+
+        public Task OnConnected(IScenePeerClient client)
+        {
             return Task.CompletedTask;
         }
 
-        public Task OnEnd(SearchEndContext searchEndCtx)
+        public Task OnDisconnected(IScenePeerClient client)
         {
-            _analytics.Push("gamefinder-end", JObject.FromObject(new { searchEndCtx.GameFinderId, searchEndCtx.Reason, searchEndCtx.PassesCount }));
-            return Task.CompletedTask;
-        }
-
-        public Task OnGameStarted(GameStartedContext searchGameStartedCtx)
-        {
-            _analytics.Push("gamefinder-start", JObject.FromObject(new { searchGameStartedCtx.GameFinderId, playerCount = searchGameStartedCtx.Game.AllPlayers.Count() }));
             return Task.CompletedTask;
         }
     }
 }
+

@@ -29,6 +29,6 @@ namespace Stormancer.Plugins.ServiceLocator
     public interface IServiceLocator
     {
         Task<string> GetSceneConnectionToken(string serviceType, string serviceName, Session session);
-		Task<string> GetSceneId(string serviceType, string serviceName);
+		Task<string> GetSceneId(string serviceType, string serviceName, Session session = null);
     }
 }

@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -19,20 +19,30 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using System.Threading.Tasks;
 
 namespace Stormancer.Server.Users
 {
     public interface IAuthenticationEventHandler
     {
-        Task Validate(ValidateAuthenticationAttemptContext authenticationCtx);
+        Task OnLoggingIn(LoggingInCtx authenticationCtx);
+        Task OnLoggedIn(LoggedInCtx ctx);
+      
     }
     
-    public class ValidateAuthenticationAttemptContext
+    public class LoggingInCtx
     {
         public AuthenticationContext AuthCtx { get; set; }
         public bool HasError { get; set; }
         public string Reason { get; set; }
         public string Type { get; internal set; }
     }
+
+    public class LoggedInCtx
+    {
+        public LoginResult Result { get; set; }
+        public SessionRecord Session { get; set; }
+    }
+
 }

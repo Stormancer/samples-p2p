@@ -20,6 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 using System.Collections.Generic;
+using System.Linq;
+using MsgPack.Serialization;
 using Newtonsoft.Json.Linq;
 
 namespace Stormancer.Server.GameSession
@@ -27,32 +29,37 @@ namespace Stormancer.Server.GameSession
     public class GameSessionConfiguration
     {
         /// <summary>
-        /// List of users can connect to gameSession
-        /// (sessionId=>userId)
-        /// </summary>
-        public Dictionary<string,string> userIds { get; set; } = new Dictionary<string, string>();
-
-        /// <summary>
         /// True if anyone can connect to the game session.
         /// </summary>
+        [MessagePackMember(0)]
         public bool Public { get; set; }
 
+        [MessagePackMember(1)]
         public bool canRestart { get; set; }
 
         /// <summary>
         /// User id of the game host. In party the host user id value is the party leader.
         /// </summary>
+        [MessagePackMember(2)]
         public string HostUserId { get; set; }
 
         /// <summary>
         /// Group connected to gameSession
         /// </summary>
+        [MessagePackMember(3)]
         public List<Team> Teams { get; set; } = new List<Team>();
+
+        /// <summary>
+        /// Get the User ID of every player in Teams
+        /// </summary>
+        [MessagePackMember(4)]
+        public IEnumerable<string> UserIds { get => Teams.SelectMany(t => t.PlayerIds); }
 
         /// <summary>
         /// Gamesession parameters like map to launch, gameType and everything can be useful to 
         /// dedicated server.
         /// </summary>
+        [MessagePackMember(5)]
         public JObject Parameters { get; set; } = new JObject();
     }
 }

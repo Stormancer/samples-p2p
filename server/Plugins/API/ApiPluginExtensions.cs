@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -31,6 +31,7 @@ namespace Stormancer
 {
     public static class ApiPluginExtensions
     {
+       
         /// <summary>
         /// Adds a controller to the scene.
         /// </summary>
@@ -43,11 +44,11 @@ namespace Stormancer
             var factory = new ControllerFactory<T>(scene);
             //Add the controllers built by the factory to the scene.
             factory.RegisterControllers();
-        
         }
+
         public static IRegistrationBuilder InstancePerRequest(this IRegistrationBuilder builder)
         {
-            return builder.InstancePerNamedLifetimeScope("request");
+            return builder.InstancePerNamedLifetimeScope(global::Server.Plugins.API.Constants.ApiRequestTag);
         }
 
     }

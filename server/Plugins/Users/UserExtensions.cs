@@ -19,9 +19,11 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Stormancer.Server.Users;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -42,5 +44,35 @@ namespace Stormancer
                 return ulong.Parse(steamId);
             }
         }
+
+        public static ulong? GetMailRuId(this User user)
+        {
+            // TODO UPDATE FOR MAIL RU
+            var mailruId = user.UserData["steamid"].ToObject<string>();
+            if (mailruId == null)
+            {
+                return null;
+            }
+            else
+            {
+                return ulong.Parse(mailruId);
+            }
+        }
+
+        public static T GetSessionValue<T>(this Session session, string key, ISerializer serializer)
+        {
+            if (session.SessionData.TryGetValue(key, out var data))
+            {
+                using (var stream = new MemoryStream(data))
+                {
+                    return serializer.Deserialize<T>(stream);
+                }
+            }
+            else
+            {
+                return default(T);
+            }
+        }
     }
 }
+

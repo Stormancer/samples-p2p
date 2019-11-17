@@ -38,19 +38,29 @@ namespace Stormancer.Plugins.ServiceLocator
 
         private readonly IServiceLocator _locator;
         private readonly IUserSessions _sessions;
+        private readonly ILogger logger;
 
-        public LocatorController(IServiceLocator locator, IUserSessions sessions)
+        public LocatorController(IServiceLocator locator, IUserSessions sessions, ILogger logger)
         {
             _locator = locator;
             _sessions = sessions;
-
+            this.logger = logger;
         }
 
         [Api(ApiAccess.Public, ApiType.Rpc)]
         public async Task<string> GetSceneConnectionToken(string serviceType, string serviceName)
         {
+           
             var session = await _sessions.GetSession(this.Request.RemotePeer);
-            return await _locator.GetSceneConnectionToken(serviceType, serviceName, session);
+           if(session == null || session.User == null)
+            {
+                logger.Log(LogLevel.Error, "locator", "An user tried to locate a service without being authenticated.", new { session });
+                throw new ClientException("locator.notAuthenticated");
+            }
+           
+            var token = await _locator.GetSceneConnectionToken(serviceType, serviceName, session);
+          
+            return token;
 
         }
 

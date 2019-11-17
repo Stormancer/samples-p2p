@@ -19,9 +19,11 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Server.Plugins.Configuration;
 using Stormancer.Core;
 using Stormancer.Diagnostics;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,7 +43,7 @@ namespace Stormancer.Server.Users
         {
             this.logger = logger;
             _users = users; 
-            config.SettingsChanged += (s, e) => ApplyConfiguration(config);
+            //config.SettingsChanged += (s, e) => ApplyConfiguration(config);
             ApplyConfiguration(config);
         }
 
@@ -130,5 +132,21 @@ namespace Stormancer.Server.Users
         {
             throw new System.NotImplementedException();
         }
+
+        public Task OnGetStatus(Dictionary<string, string> status, Session session)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task Unlink(User session)
+        {
+            throw new System.NotSupportedException();
+        }
+
+        public Task<DateTime?> RenewCredentials(AuthenticationContext authenticationContext)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }
+

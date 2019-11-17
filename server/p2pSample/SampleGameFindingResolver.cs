@@ -38,14 +38,8 @@ namespace P2p
             {
 
             }
-            gameCtx.ResolutionAction = async ctx => {
-
-                var response = new GameFinderResponse();
-
-                response.connectionToken = await gameSessions.CreateConnectionToken(id, ctx.Peer.SessionId);
-                
-                ctx.WriteObjectToStream(response);
-            };
+            gameCtx.GameSceneId = id;
+           
         }
     }
 }

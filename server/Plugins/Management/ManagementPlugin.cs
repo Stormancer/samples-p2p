@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Newtonsoft.Json.Linq;
 using Server.Plugins.Configuration;
 using Stormancer.Diagnostics;
@@ -26,6 +27,7 @@ using Stormancer.Management.Client;
 using Stormancer.Plugins;
 using Stormancer.Server.Components;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -44,9 +46,9 @@ namespace Stormancer.Server.Management
         public void Build(HostPluginBuildContext ctx)
         {
             ctx.HostDependenciesRegistration += (IDependencyBuilder b) =>
-              {
-                  b.Register<ManagementClientAccessor>();
-              };
+            {
+                b.Register<ManagementClientAccessor>().SingleInstance();
+            };
         }
     }
     public class ManagementClientConfig
@@ -62,17 +64,38 @@ namespace Stormancer.Server.Management
         private readonly IEnvironment _environment;
         private readonly ILogger _logger;
         private ManagementClientConfig _config;
+        private Lazy<Task<ApplicationClient>> _client;
+        private ConcurrentDictionary<string, Task<ApplicationClient>> _clients = new ConcurrentDictionary<string, Task<ApplicationClient>>();
 
+        private Lazy<Task<FederationViewModel>> _federation;
         public ManagementClientAccessor(IEnvironment environment, IConfiguration config, ILogger logger)
         {
             _environment = environment;
             _logger = logger;
             config.SettingsChanged += (o, settings) => ApplyConfig(settings);
             ApplyConfig(config.Settings);
+
+            _client = new Lazy<Task<ApplicationClient>>(async () =>
+            {
+
+                var infos = await _environment.GetApplicationInfos();
+
+                var result = Stormancer.Management.Client.ApplicationClient.ForApi(infos.AccountId, infos.ApplicationName, infos.PrimaryKey);
+                result.Endpoint = infos.ApiEndpoint;
+                return result;
+            });
+            ResetFederation();
         }
+
+        private void ResetFederation()
+        {
+            _federation = new Lazy<Task<FederationViewModel>>(() => _environment.GetFederation());
+        }
+
         private void ApplyConfig(dynamic settings)
         {
             _config = ((JObject)settings.management)?.ToObject<ManagementClientConfig>() ?? new ManagementClientConfig();
+
         }
 
         public async Task<string> CreateConnectionToken(string sceneUri, byte[] payload = null, string contentType = "application/octet-stream")
@@ -84,25 +107,56 @@ namespace Stormancer.Server.Management
         }
         public async Task CreateScene(string sceneUri, string template, bool isPublic, bool isPersistent, JObject metadata = null)
         {
-            
+
             (var client, var sceneId) = await GetClientForSceneUri(sceneUri);
             try
             {
                 await client.CreateScene(sceneId, template, isPublic, metadata, isPersistent);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                _logger.Log(LogLevel.Error,"manage", $"Failed to create the scene {sceneUri} on {client.Endpoint}", ex);
+                _logger.Log(LogLevel.Error, "manage", $"Failed to create the scene {sceneUri} on {client.Endpoint}", ex);
                 throw;
             }
         }
 
         private async Task<(ApplicationClient, string)> GetClientForSceneUri(string sceneUri)
         {
-            var federation = await _environment.GetFederation();
-            var appInfos = await _environment.GetApplicationInfos();
-            (var clusterId, var account, var app, var sceneId) = ParseSceneUri(sceneUri, federation.current.id, appInfos.AccountId, appInfos.ApplicationName);
 
+            (var clusterId, var account, var app, var sceneId) = ParseSceneUri(sceneUri);
+            var federation = await (_federation.Value);
+            if (clusterId == null)
+            {
+                clusterId = federation.current.id;
+            }
+            try
+            {
+                var result = await _clients.GetOrAdd(clusterId, (id) => getClientForSceneUriImpl(clusterId, account, app, sceneId));
+                return (result,sceneId);
+            }
+            catch
+            {
+                _clients.TryRemove(clusterId, out _);
+                throw;
+            }
+
+        }
+
+        private async Task<ApplicationClient> getClientForSceneUriImpl(string clusterId, string account, string app, string sceneId)
+        {
+
+            var federation = await (_federation.Value);
+            var appInfos = await _environment.GetApplicationInfos();
+
+
+            if (app == null)
+            {
+                app = appInfos.ApplicationName;
+            }
+            if (account == null)
+            {
+                account = appInfos.AccountId;
+            }
             IEnumerable<string> endpoints = null;
             string primaryKey = null;
             if (clusterId == federation.current.id)
@@ -123,9 +177,15 @@ namespace Stormancer.Server.Management
             {
                 _config.AccessKeys.TryGetValue($"{clusterId}/{account}/{app}", out primaryKey);
             }
-            if (endpoints == null)
+            if (endpoints == null) //Maybe outdated federation?
             {
-                throw new ClientException("notFound?cluster");
+                ResetFederation();//Refresh and retry.
+                federation = await _federation.Value;
+                endpoints = federation.clusters.FirstOrDefault(c => c.id == clusterId)?.endpoints;
+                if (endpoints == null)//No luck Error.
+                {
+                    throw new ClientException($"notFound?cluster={clusterId}");
+                }
             }
             if (primaryKey == null)
             {
@@ -133,12 +193,9 @@ namespace Stormancer.Server.Management
             }
 
             var client = Stormancer.Management.Client.ApplicationClient.ForApi(account, app, primaryKey, endpoints.RandomElement());
-            return (client, sceneId);
+            return client;
         }
-
-
-
-        private Tuple<string, string, string, string> ParseSceneUri(string uri, string defaultClusterId, string defaultAccountId, string defaultApplication)
+        private (string, string, string, string) ParseSceneUri(string uri)
         {
             string clusterId = null, account = null, application = null, sceneId = null;
 
@@ -169,29 +226,13 @@ namespace Stormancer.Server.Management
                 sceneId = uri;
             }
 
-            if (string.IsNullOrEmpty(clusterId))
-            {
-                clusterId = defaultClusterId;
-            }
-            if (string.IsNullOrEmpty(account))
-            {
-                account = defaultAccountId;
-            }
-            if (string.IsNullOrEmpty(application))
-            {
-                application = defaultApplication;
-            }
 
-            return Tuple.Create(clusterId, account, application, sceneId);
+            return (clusterId, account, application, sceneId);
         }
 
-        public async Task<Stormancer.Management.Client.ApplicationClient> GetApplicationClient()
+        public Task<Stormancer.Management.Client.ApplicationClient> GetApplicationClient()
         {
-            var infos = await _environment.GetApplicationInfos();
-
-            var result = Stormancer.Management.Client.ApplicationClient.ForApi(infos.AccountId, infos.ApplicationName, infos.PrimaryKey);
-            result.Endpoint = infos.ApiEndpoint;
-            return result;
+            return _client.Value;
         }
     }
 }

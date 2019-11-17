@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Stormancer.Server.Users;
 using System;
 using System.Collections.Generic;
@@ -49,25 +50,25 @@ namespace Stormancer.Server.Users
 
         public void AddMetadata(Dictionary<string, string> result)
         {
-            result.Add("provider.deviceidentifier", "enabled");
+            result["provider.deviceidentifier"] = "enabled";
         }
 
         public async Task<AuthenticationResult> Authenticate(AuthenticationContext authenticationCtx, CancellationToken ct)
         {
             var pId = new PlatformId { Platform = PROVIDER_NAME };
             string identifier;
-            if(!authenticationCtx.Parameters.TryGetValue("deviceidentifier", out identifier))
+            if (!authenticationCtx.Parameters.TryGetValue("deviceidentifier", out identifier))
             {
                 return AuthenticationResult.CreateFailure("Device identifier must not be empty.", pId, authenticationCtx.Parameters);
             }
             var user = await _users.GetUserByClaim(PROVIDER_NAME, ClaimPath, identifier);
-            if(user == null)
+            if (user == null)
             {
                 var uid = Guid.NewGuid().ToString("N");
                 user = await _users.CreateUser(uid, JObject.FromObject(new { deviceidentifier = identifier }));
 
-                var claim = new JObject { { ClaimPath, identifier } };
-                user = await _users.AddAuthentication(user, PROVIDER_NAME, claim, identifier);
+
+                user = await _users.AddAuthentication(user, PROVIDER_NAME, claim => claim[ClaimPath] = identifier, new Dictionary<string, string> { { ClaimPath, identifier } });
             }
 
             pId.OnlineId = user.Id;
@@ -79,5 +80,21 @@ namespace Stormancer.Server.Users
         {
             throw new NotImplementedException();
         }
+
+        public Task OnGetStatus(Dictionary<string, string> status, Session session)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task Unlink(User user)
+        {
+            return _users.RemoveAuthentication(user, PROVIDER_NAME);
+        }
+
+        public Task<DateTime?> RenewCredentials(AuthenticationContext authenticationContext)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
+

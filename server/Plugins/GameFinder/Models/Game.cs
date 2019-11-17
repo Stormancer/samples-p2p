@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,7 +29,7 @@ namespace Stormancer.Server.GameFinder
     public class Game
     {
         #region constructors
-        public Game(object customData = null)
+        public Game(JObject customData = null)
             : this(0, customData)
         {
         }
@@ -37,12 +38,12 @@ namespace Stormancer.Server.GameFinder
         {
         }
 
-        public Game(int teamCount, object customData = null) 
+        public Game(int teamCount, JObject customData = null) 
             : this(teamCount, () => new Team(), customData)
         {
         }
 
-        public Game(int teamCount, Func<Team> teamFactory, object customData = null)
+        public Game(int teamCount, Func<Team> teamFactory, JObject customData = null)
         {
             CustomData = customData;
             for(var i = 0; i< teamCount; i++)
@@ -52,17 +53,21 @@ namespace Stormancer.Server.GameFinder
             Id = Guid.NewGuid().ToString();
         }
 
-        public Game(IEnumerable<Team> teams, object customData = null)
+        public Game(IEnumerable<Team> teams, JObject customData = null)
         {
             CustomData = customData;
             Teams.AddRange(teams);
             Id = Guid.NewGuid().ToString();
         }
+        public static Game Create<T>(IEnumerable<Team> teams, T customData = null) where T:class
+        {
+            return new Game(teams, customData != null ? JObject.FromObject(customData) : null);
+        }
         #endregion
 
         public string Id { get; set; }
 
-        public object CustomData { get; set; }
+        public JObject CustomData { get; set; }
 
         public object CommonCustomData { get; set; }
 

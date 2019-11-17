@@ -51,7 +51,7 @@ namespace Stormancer.Server.GameSession
         public async Task PostResults(RequestContext<IScenePeerClient> ctx)
         {
             var writer = await _service.PostResults(ctx.InputStream, ctx.RemotePeer);
-            ctx.SendValue(s =>
+            await ctx.SendValue(s =>
             {
                 var oldPosition = s.Position;
                 writer(s, ctx.RemotePeer.Serializer());

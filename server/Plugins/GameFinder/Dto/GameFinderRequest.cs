@@ -27,7 +27,7 @@ namespace Stormancer.Server.GameFinder
     public class GameFinderRequest
     {
         /// <summary>
-        /// membres du groupe présentés sous la forme [userId]=>[profileId]
+        /// Group members: [userId]=>[profileId]
         /// </summary>
         [MessagePackMember(0)]
         public Dictionary<string, string> ProfileIds { get; set; } = new Dictionary<string, string>();

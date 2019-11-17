@@ -22,6 +22,7 @@
 using Stormancer.Core;
 using Stormancer.Diagnostics;
 using Stormancer.Plugins;
+using Stormancer.Server.GameFinder.Models;
 using System;
 using System.Collections.Generic;
 
@@ -37,6 +38,12 @@ namespace Stormancer.Server.GameFinder
         {
             //ctx.HostStarting += HostStarting;
             ctx.SceneDependenciesRegistration += SceneDependenciesRegistration;
+            ctx.HostDependenciesRegistration += (IDependencyBuilder builder) =>
+            {
+                builder.Register<GameFinderController>();
+                builder.Register<GameFinderService>().As<IGameFinderService>().InstancePerScene();
+                builder.Register<GameFinderData>().AsSelf().InstancePerScene();
+            };
             ctx.SceneCreated += SceneCreated;
         }
 
@@ -51,8 +58,6 @@ namespace Stormancer.Server.GameFinder
                     config.RegisterDependencies(builder);
                 }
             }
-            builder.Register<GameFinderController>();
-            builder.Register<GameFinderService>().As<IGameFinderService>().InstancePerScene();
         }
 
         private void SceneCreated(ISceneHost scene)

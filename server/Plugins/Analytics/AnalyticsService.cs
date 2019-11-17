@@ -19,10 +19,8 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-using Newtonsoft.Json;
+
 using Newtonsoft.Json.Linq;
-using NLog;
-using NLog.Config;
 using Server.Plugins.Configuration;
 using Stormancer.Diagnostics;
 using Stormancer.Server.Components;
@@ -44,95 +42,24 @@ namespace Stormancer.Server.Analytics
         private readonly IESClientFactory _cFactory;
         private readonly IEnvironment _environment;
         private readonly Task<ApplicationInfos> _applicationInfosTask;
-        private string _deploymentId;
+        private readonly Task<FederationViewModel> _federation;
 
-        private readonly Stormancer.Diagnostics.ILogger _logger;
-        private string _nlogConfigFile;
-        private bool _nlogLoggingEnabled = false;
-        private int? _elasticsearchAggregationTime;
-        private Task _flushingTask;
-        private readonly NLog.ILogger _nLogger = LogManager.GetLogger("analytics");
+        
+        private ILogger _logger;
 
         public AnalyticsService(
             IESClientFactory clientFactory,
             IEnvironment environment,
-            Stormancer.Diagnostics.ILogger logger,
-            IConfiguration configuration
-        )
+            ILogger logger,
+            IConfiguration configuration)
         {
             _cFactory = clientFactory;
             _environment = environment;
             _logger = logger;
             _applicationInfosTask = _environment.GetApplicationInfos();
-            configuration.SettingsChanged += (s, c) => ApplyConfig(c);
-            ApplyConfig(configuration.Settings);
-
-            ConfigurationItemFactory.Default.JsonConverter = new JsonNetSerializer();
+            _federation = _environment.GetFederation();
         }
-
-        private void ApplyConfig(dynamic config)
-        {
-            var previousNlogConfigFileValue = _nlogConfigFile;
-            _nlogConfigFile = (string)config?.analytics?.NLog?.config;
-
-
-            _elasticsearchAggregationTime = (int?)config?.analytics?.elasticsearch?.aggregationTime;
-
-            if (_nlogConfigFile != null)
-            {
-                if (_nlogConfigFile != previousNlogConfigFileValue)
-                {
-                    lock (this)
-                    {
-                        try
-                        {
-                            LogManager.Configuration = new XmlLoggingConfiguration(_nlogConfigFile);
-                            _nlogLoggingEnabled = true;
-                        }
-                        catch (Exception ex)
-                        {
-                            _nlogLoggingEnabled = false;
-                            _logger.Log(Stormancer.Diagnostics.LogLevel.Error, "Analytics.Nlog", $"Unable to load Nlog configuration file at '{_nlogConfigFile}'", ex);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                _nlogLoggingEnabled = false;
-            }
-
-            if (_elasticsearchAggregationTime.HasValue && _flushingTask?.Status != TaskStatus.Running)
-            {
-                lock (this)
-                {
-                    if (_elasticsearchAggregationTime.HasValue && _flushingTask?.Status != TaskStatus.Running)
-                    {
-                        _flushingTask = FlushPeriodically();
-                    }
-                }
-            }
-        }
-
-        private async Task FlushPeriodically()
-        {
-            var aggregationTime = _elasticsearchAggregationTime;
-            while (aggregationTime.HasValue)
-            {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(aggregationTime.GetValueOrDefault()));
-                    await ElasticSearchFlush();
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log(Stormancer.Diagnostics.LogLevel.Error, "analytics", "Failed to flush analytics.", ex);
-                }
-                aggregationTime = _elasticsearchAggregationTime;
-            }
-        }
-
-
+        
         private async Task<Nest.IElasticClient> CreateESClient(string type, string param = "")
         {
             var result = await _cFactory.CreateClient(type, TABLE_NAME, param);
@@ -144,7 +71,7 @@ namespace Stormancer.Server.Analytics
             var nodes = _cFactory.GetConnectionPool("analytics").Nodes.ToList();
             return new UriBuilder(nodes[0].Uri.AbsoluteUri ?? "http://localhost:9200/");
         }
-
+        
         /// <summary>
         /// Compute a different index by accountID + appName + week + type.
         /// </summary>
@@ -184,118 +111,73 @@ namespace Stormancer.Server.Analytics
             return date.Ticks / (TimeSpan.TicksPerDay * 7);
         }
 
-        private async Task ElasticSearchFlush()
+        public async Task Flush()
         {
-            foreach (var store in _documents)
+           
+            async Task FlushStore(string dataType, ConcurrentQueue<AnalyticsDocument> docs)
             {
-                var dataType = store.Key;
                 var client = await CreateESClient(dataType, GetWeek(DateTime.UtcNow).ToString());
 
                 List<AnalyticsDocument> documentToBulk = new List<AnalyticsDocument>();
 
-                while (store.Value.TryDequeue(out AnalyticsDocument doc))
+                while (docs.TryDequeue(out AnalyticsDocument doc))
                 {
                     doc.Index = client.ConnectionSettings.DefaultIndex;
+                    
+                    var appInfos = await _applicationInfosTask;
+                    var fed = await _federation;
+                    doc.AccountId = appInfos.AccountId;
+                    doc.App = appInfos.ApplicationName;
+                    doc.Cluster = fed.current.id;
+                    doc.DeploymentId = appInfos.DeploymentId;
                     documentToBulk.Add(doc);
                 }
 
-                if (documentToBulk.Count > 0)
+                if (documentToBulk.Count > 0) 
                 {
                     var r = await client.BulkAsync(bd => bd.IndexMany<AnalyticsDocument>(documentToBulk));
                     if (!r.IsValid)
                     {
-                        _logger.Log(Stormancer.Diagnostics.LogLevel.Error, "analytics", "Failed to index analytics", r.OriginalException);
+                        _logger.Log(LogLevel.Error, "analytics", "Failed to index analytics", r.OriginalException);
                     }
                 }
             }
-        }
 
+            var tasks = new List<Task>();
+            foreach (var kvp in _documents)
+            {
+                var dataType = kvp.Key;
+                var docs = kvp.Value;
+                tasks.Add(FlushStore(dataType, docs));
+                
+            }
+
+            await Task.WhenAll(tasks);
+
+        }
+        
         /// <summary>
         /// Push data in memory
         /// </summary>        
         /// <param name="content">String to store</param>
         public void Push(AnalyticsDocument content)
         {
-            _ = PushImpl(content);
-        }
-
-        public async Task PushImpl(AnalyticsDocument content)
-        {
-            try
-            {
-                content.CreationDate = DateTime.UtcNow;
-                if (_deploymentId == null)
-                {
-                    var appInfos = await _applicationInfosTask;
-                    _deploymentId = appInfos.DeploymentId;
-                }
-                content.DeploymentId = _deploymentId;
-
-                if (_elasticsearchAggregationTime.HasValue)
-                {
-                    var store = _documents.GetOrAdd(content.Type, t => new ConcurrentQueue<AnalyticsDocument>());
-                    store.Enqueue(content);
-                }
-
-                if (_nlogLoggingEnabled)
-                {
-                    _nLogger.Log(NLog.LogLevel.Info, "{content}", content);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.Log(Stormancer.Diagnostics.LogLevel.Error, "Analytics.Push", $"An error occurred when trying to push analytics.", ex);
-            }
+            var store = _documents.GetOrAdd(content.Type, t => new ConcurrentQueue<AnalyticsDocument>());
+            content.CreationDate = DateTime.UtcNow;
+            store.Enqueue(content);
         }
 
         /// <summary>
         /// Push data in memory
         /// </summary>
-        /// <param name="type">Index type where the data will be store</param>
+        /// <param name="group">Index type where the data will be store</param>
+        /// <param name="category">category of analytics document, for search purpose</param>
         /// <param name="document">Json object to store</param>
-        public void Push(string type, JObject content)
+        public void Push(string group,string category, JObject content)
         {
-            AnalyticsDocument document = new AnalyticsDocument { Content = content, Type = type };
+            AnalyticsDocument document = new AnalyticsDocument { Content = content, Type = group, Category = category };
             Push(document);
         }
     }
-
-    internal class JsonNetSerializer : IJsonConverter
-    {
-        readonly JsonSerializerSettings _settings;
-
-        public JsonNetSerializer()
-        {
-            _settings = new JsonSerializerSettings
-            {
-                Formatting = Formatting.Indented,
-                ReferenceLoopHandling = ReferenceLoopHandling.Ignore
-            };
-        }
-
-        /// <summary>Serialization of an object into JSON format.</summary>
-        /// <param name="value">The object to serialize to JSON.</param>
-        /// <param name="builder">Output destination.</param>
-        /// <returns>Serialize succeeded (true/false)</returns>
-        public bool SerializeObject(object value, StringBuilder builder)
-        {
-            try
-            {
-                var jsonSerializer = JsonSerializer.CreateDefault(_settings);
-                var sw = new System.IO.StringWriter(builder, System.Globalization.CultureInfo.InvariantCulture);
-                using (var jsonWriter = new JsonTextWriter(sw))
-                {
-                    jsonWriter.Formatting = Formatting.None;
-                    jsonSerializer.Formatting = Formatting.None;
-                    jsonSerializer.Serialize(jsonWriter, value, null);
-                }
-            }
-            catch (Exception e)
-            {
-                NLog.Common.InternalLogger.Error(e, "Error when custom JSON serialization");
-                return false;
-            }
-            return true;
-        }
-    }
 }
+

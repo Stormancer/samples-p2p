@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -19,20 +19,20 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
-using Stormancer;
-using Stormancer.Server.Components;
-using Stormancer.Diagnostics;
+
 using Nest;
+using Newtonsoft.Json.Linq;
 using Server.Plugins.Users;
 using Stormancer.Core.Helpers;
+using Stormancer.Diagnostics;
+using Stormancer.Server.Components;
 using Stormancer.Server.Database;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using LogLevel = Stormancer.Diagnostics.LogLevel;
 
 namespace Stormancer.Server.Users
 {
@@ -43,7 +43,7 @@ namespace Stormancer.Server.Users
         private readonly IESClientFactory _clientFactory;
         private readonly string _indexName;
         private readonly ILogger _logger;
-        private readonly Lazy<IEnumerable<IUserEventHandler>> _eventHandlers;
+        private readonly Func<IEnumerable<IUserEventHandler>> _handlers;
         private readonly Random _random = new Random();
 
         private static bool _mappingChecked = false;
@@ -76,15 +76,15 @@ namespace Stormancer.Server.Users
 
 
         public UserService(
-          
+
             Database.IESClientFactory clientFactory,
             IEnvironment environment,
             ILogger logger,
-            Lazy<IEnumerable<IUserEventHandler>> eventHandlers
+            Func<IEnumerable<IUserEventHandler>> eventHandlers
             )
         {
             _indexName = (string)(environment.Configuration.users?.index) ?? "gameData";
-            _eventHandlers = eventHandlers;
+            _handlers = eventHandlers;
             _logger = logger;
             //_logger.Log(LogLevel.Trace, "users", $"Using index {_indexName}", new { index = _indexName });
 
@@ -113,25 +113,77 @@ namespace Stormancer.Server.Users
         {
             return _clientFactory.GetIndex<T>(_indexName);
         }
-        public async Task<User> AddAuthentication(User user, string provider, JObject authData, string cacheId)
+        public async Task<User> AddAuthentication(User user, string provider, Action<dynamic> authDataModifier, Dictionary<string, string> cacheEntries)
         {
             var c = await Client<User>();
 
-            user.Auth[provider] = authData;
-            var result = await c.IndexAsync(new AuthenticationClaim { Id = provider + "_" + cacheId, UserId = user.Id }, s => s.Index(GetIndex<AuthenticationClaim>()).OpType(Elasticsearch.Net.OpType.Create));
-            if(!result.IsValid) 
+            var auth = user.Auth[provider];
+            if (auth == null)
             {
-                if (result.ServerError.Error.Type == "document_already_exists_exception")
+                auth = new JObject();
+                user.Auth[provider] = auth;
+            }
+            authDataModifier?.Invoke(auth);
+            foreach (var entry in cacheEntries)
+            {
+                var result = await c.IndexAsync(new AuthenticationClaim { Id = $"{provider}_{entry.Key}_{entry.Value}", UserId = user.Id, Provider = provider }, s => s.Index(GetIndex<AuthenticationClaim>()).OpType(Elasticsearch.Net.OpType.Create));
+
+                if (!result.IsValid)
                 {
-                    throw new ConflictException();
-                }
-                else
-                {
-                    throw new InvalidOperationException(result.ServerError.Error.Type);
+                    var r = await c.GetAsync<AuthenticationClaim>($"{provider}_{entry.Key}_{entry.Value}", s => s.Index(GetIndex<AuthenticationClaim>()));
+                    if (r.IsValid && r.Source.UserId != user.Id)
+                    {
+                        if (result.ServerError?.Error?.Type == "document_already_exists_exception")
+                        {
+                            throw new ConflictException();
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException(result.ServerError?.Error?.Type ?? result.OriginalException.ToString());
+                        }
+                    }
                 }
             }
+            try
+            {
+                await TaskHelper.Retry(async () =>
+                {
+
+                    var response = await c.IndexAsync(user, s => s.Index(GetIndex<User>()));
+                    if (!response.IsValid)
+                    {
+                        throw new InvalidOperationException(response.DebugInformation);
+                    }
+                    return response;
+
+                }, RetryPolicies.IncrementalDelay(5, TimeSpan.FromSeconds(1)), CancellationToken.None, ex => true);
+
+                var ctx = new AuthenticationChangedCtx { Type = provider, User = user };
+                await _handlers().RunEventHandler(h => h.OnAuthenticationChanged(ctx), ex => _logger.Log(LogLevel.Error, "user.addAuth", "An error occured while running OnAuthenticationChanged event handler", ex));
+
+                return user;
+            }
+            catch(InvalidOperationException)
+            {
+                foreach (var entry in cacheEntries)
+                {
+                    await c.DeleteAsync<AuthenticationClaim>($"{provider}_{entry.Key}_{entry.Value}", s => s.Index(GetIndex<AuthenticationClaim>()));
+                }
+                throw;
+            }
+        }
+
+        public async Task<User> RemoveAuthentication(User user, string provider)
+        {
+            var c = await Client<User>();
+            user.Auth.Remove(provider);
+            await c.DeleteByQueryAsync<AuthenticationClaim>(s => s.Index(GetIndex<AuthenticationClaim>()).Query(q => q.Term(t => t.Field(record => record.Provider).Value(provider))));
             await c.IndexAsync(user, s => s.Index(GetIndex<User>()));
-            
+
+            var ctx = new AuthenticationChangedCtx { Type = provider, User = user };
+
+            await _handlers().RunEventHandler(h => h.OnAuthenticationChanged(ctx), ex => _logger.Log(LogLevel.Error, "user.removeAuth", "An error occured while running OnAuthenticationChanged event handler", ex));
+
             return user;
         }
 
@@ -144,12 +196,104 @@ namespace Stormancer.Server.Users
 
             return user;
         }
+        public class UserLastLoginUpdate
+        {
+            public DateTime LastLogin { get; set; }
+        }
+        public async Task UpdateLastLoginDate(string userId)
+        {
+            var c = await Client<User>();
+            await c.UpdateAsync<User, UserLastLoginUpdate>(userId,
+                u => u.Doc(new UserLastLoginUpdate { LastLogin = DateTime.UtcNow })
+                );
+        }
 
+        private class ClaimUser
+        {
+            public string Login { get; set; } = null;
+            public string CacheId { get; set; } = null;
+            public AuthenticationClaim Claim { get; set; } = null;
+            public User User { get; set; } = null;
+        }
+
+        public async Task<IEnumerable<User>> GetUsersByClaim(string provider, string claimPath, string[] logins)
+        {
+            var c = await Client<User>();
+
+            // Create datas
+            var datas = logins.Select(login => new ClaimUser { Login = login, CacheId = provider + "_" + login });
+
+            // Get all auth claims
+            var response = await c.MultiGetAsync(desc => desc.GetMany<AuthenticationClaim>(datas.Select(data => data.CacheId)).Index(GetIndex<AuthenticationClaim>()));
+
+            // Get users for found claims
+            var usersToGet = new List<string>();
+            var searchUsersTasks = new List<Task>();
+            foreach (var data in datas)
+            {
+                // Set claim
+                data.Claim = response.Source<AuthenticationClaim>(data.CacheId);
+                if (data.Claim != null)
+                {
+                    // Populate users for found claims
+                    usersToGet.Add(data.Claim.UserId);
+                }
+                else
+                {
+                    // Search user if no claim
+                    async Task SearchUser()
+                    {
+                        var r = await c.SearchAsync<User>(sd => sd.Query(qd => qd.Term("auth." + provider + "." + claimPath, data.Login)));
+
+                        if (r.Hits.Count() > 1)
+                        {
+                            data.User = await MergeUsers(r.Hits.Select(h => h.Source));
+                        }
+                        else
+                        {
+                            var h = r.Hits.FirstOrDefault();
+
+                            if (h != null)
+                            {
+
+                                data.User = h.Source;
+                            }
+                            else
+                            {
+                                return;
+                            }
+                        }
+
+                        // Create cached claim
+                        await c.IndexAsync<AuthenticationClaim>(new AuthenticationClaim { Id = data.CacheId, UserId = data.User.Id }, s => s.Index(GetIndex<AuthenticationClaim>()));
+                    }
+                    searchUsersTasks.Add(SearchUser());
+                }
+            }
+
+            // Get users from db
+            var response2 = await c.MultiGetAsync(desc => desc.GetMany<User>(usersToGet));
+
+            await Task.WhenAll(searchUsersTasks);
+
+            // Get users by cached claims
+            var users = response2.GetMany<User>(usersToGet).Where(hit => hit.Found).Select(hit => hit.Source).ToArray();
+
+            // Populate users from cached claims
+            foreach (var user in users)
+            {
+                var data = datas.Where(data2 => data2.Claim.UserId == user.Id).First();
+                data.User = user;
+            }
+
+            // Return found users
+            return datas.Select(data => data.User).ToArray();
+        }
 
         public async Task<User> GetUserByClaim(string provider, string claimPath, string login)
         {
             var c = await Client<User>();
-            var cacheId = provider + "_" + login;
+            var cacheId = $"{provider}_{claimPath}_{login}";
             var claim = await c.GetAsync<AuthenticationClaim>(cacheId, s => s.Index(GetIndex<AuthenticationClaim>()));
             if (claim.Found)
             {
@@ -165,7 +309,7 @@ namespace Stormancer.Server.Users
             }
             else
             {
-               
+
                 var r = await c.SearchAsync<User>(sd => sd.Query(qd => qd.Term("auth." + provider + "." + claimPath, login)));
 
 
@@ -199,7 +343,7 @@ namespace Stormancer.Server.Users
 
         private async Task<User> MergeUsers(IEnumerable<User> users)
         {
-            var handlers = _eventHandlers.Value;
+            var handlers = _handlers();
             foreach (var handler in handlers)
             {
                 await handler.OnMergingUsers(users);
@@ -253,15 +397,34 @@ namespace Stormancer.Server.Users
             else
             {
                 user.UserData = JObject.FromObject(data);
-                await (await Client<User>()).IndexAsync(user,s=>s);
+                await (await Client<User>()).IndexAsync(user, s => s);
             }
         }
 
-        public async Task<IEnumerable<User>> Query(string query, int take, int skip)
+        public async Task<IEnumerable<User>> Query(IEnumerable<KeyValuePair<string, string>> query, int take, int skip)
         {
             var c = await Client<User>();
 
-            var result = await c.SearchAsync<User>(s => s.Query(q => q.QueryString(qs => qs.Query(query).DefaultField("userData.handle") )).Size(take).Skip(skip));
+            // TODO: need this to handle dashes properly
+            //var result = await c.SearchAsync<User>(s => s.Query(q => q.QueryString(qs => qs.Query(query).DefaultField("userData.handle") )).Size(take).Skip(skip));
+            var mustClauses = query.Select<KeyValuePair<string, string>, Func<QueryContainerDescriptor<User>, QueryContainer>>(i =>
+            {
+                return cd => cd.Match(m => m.Field(i.Key).Query(i.Value));
+            }).ToArray();
+            var result = await c.SearchAsync<User>(s =>
+            {
+                if (mustClauses.Any())
+                {
+                    return s.Query(
+                    q => q.Bool(b => b.Must(mustClauses))
+                    );
+                }
+                else
+                {
+                    return s;
+                }
+
+            });
 
             return result.Documents;
         }
@@ -277,7 +440,7 @@ namespace Stormancer.Server.Users
             else
             {
                 user.Channels[channel] = JObject.FromObject(data);
-                await (await Client<User>()).IndexAsync(user,s=>s);
+                await (await Client<User>()).IndexAsync(user, s => s);
             }
 
         }
@@ -298,6 +461,14 @@ namespace Stormancer.Server.Users
             {
                 throw new InvalidOperationException("DB error : " + response.ServerError.ToString());
             }
+        }
+
+        public async Task<Dictionary<string, User>> GetUsers(params string[] userIds)
+        {
+            var c = await Client<User>();
+            var r = await c.MultiGetAsync(s => s.GetMany<User>(userIds.Distinct()));
+            var sources = r.SourceMany<User>(userIds);
+            return sources.ToDictionary(s => s.Id);
         }
 
 

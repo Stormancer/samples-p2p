@@ -58,8 +58,8 @@ namespace Stormancer.Server.Database
     }
     public class ESConnectionPoolConfig
     {
-        public List<string> Endpoints { get; set; } = new List<string> { "http://localhost:9200" };
-        public bool Sniffing { get; set; } = true;
+        public List<string> Endpoints { get; set; } = new List<string> { };
+        public bool Sniffing { get; set; } = false;
         public ESCredentials Credentials { get; set; }
     }
     public class ESIndexPolicyConfig
@@ -258,7 +258,7 @@ namespace Stormancer.Server.Database
 
             if (!_connectionPools.ContainsKey("default"))
             {
-                _connectionPools.Add("default", new ConnectionPool(new Elasticsearch.Net.SniffingConnectionPool(new[] { new Uri("http://localhost:9200") }), null));
+                _connectionPools.Add("default", new ConnectionPool(new Elasticsearch.Net.StaticConnectionPool(new[] { new Uri("http://localhost:9200") }), null));
             }
         }
 
@@ -392,9 +392,9 @@ namespace Stormancer.Server.Database
 
         private async Task CreateMapping<T>(IElasticClient client, Func<PutMappingDescriptor<T>, IPutMappingRequest> mapping) where T : class
         {
-            if (!(await client.IndexExistsAsync(client.ConnectionSettings.DefaultIndex)).Exists)
+            if (!(await client.Indices.ExistsAsync(client.ConnectionSettings.DefaultIndex)).Exists)
             {
-                await client.CreateIndexAsync(client.ConnectionSettings.DefaultIndex);
+                await client.Indices.CreateAsync(client.ConnectionSettings.DefaultIndex);
                 await client.MapAsync<T>(mapping);
             }
         }

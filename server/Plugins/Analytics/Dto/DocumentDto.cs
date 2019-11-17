@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+
 using MsgPack.Serialization;
 
 namespace Stormancer.Server.Analytics
@@ -32,3 +33,4 @@ namespace Stormancer.Server.Analytics
         public string Content;
     }
 }
+

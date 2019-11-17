@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Newtonsoft.Json.Linq;
 using Server.Plugins.AdminApi;
 using Stormancer.Core;
@@ -28,6 +29,8 @@ using Stormancer.Server.Analytics;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Stormancer.Server.Components;
+using Stormancer.Plugins.ServiceLocator;
 
 namespace Stormancer.Server.Users
 {
@@ -42,7 +45,7 @@ namespace Stormancer.Server.Users
     class UsersManagementPlugin : Stormancer.Plugins.IHostPlugin
     {
         public const string SCENE_TEMPLATE = "authenticator";
-       
+
 
         public static string GetSceneId()
         {
@@ -51,7 +54,7 @@ namespace Stormancer.Server.Users
 
         public UsersManagementPlugin()
         {
-           
+
         }
 
         public void Build(HostPluginBuildContext ctx)
@@ -60,7 +63,7 @@ namespace Stormancer.Server.Users
             ctx.HostStarted += HostStarted;
             ctx.HostDependenciesRegistration += RegisterDependencies;
             ctx.SceneDependenciesRegistration += RegisterSceneDependencies;
-
+            ctx.SceneCreated += SceneCreated;
             ctx.SceneStarted += (ISceneHost scene) =>
             {
                 if (scene.Template == SCENE_TEMPLATE)
@@ -69,29 +72,53 @@ namespace Stormancer.Server.Users
                     scene.RunTask(async ct =>
                     {
                         var analytics = scene.DependencyResolver.Resolve<IAnalyticsService>();
-                        var sessions = scene.DependencyResolver.Resolve<UserSessions>();
+                        var sessions = scene.DependencyResolver.Resolve<IUserSessions>() as UserSessions;
                         var logger = scene.DependencyResolver.Resolve<ILogger>();
                         while (!ct.IsCancellationRequested)
                         {
-                            var authenticatedUsersCount = sessions.AuthenticatedUsersCount;
-                            analytics.Push("sessions-count", JObject.FromObject(new { AuthenticatedUsersCount = authenticatedUsersCount }));
+                            var authenticatedUsersCount = sessions?.AuthenticatedUsersCount ?? 0;
+                            analytics.Push("user", "sessions", JObject.FromObject(new { AuthenticatedUsersCount = authenticatedUsersCount }));
                             await Task.Delay(1000);
                         }
                     });
+                    // Start periodic users credentials renewal
+                    scene.RunTask(ct => scene.DependencyResolver.Resolve<CredentialsRenewer>().PeriodicRenewal(ct));
                 }
             };
+        }
+
+        private void SceneCreated(ISceneHost scene)
+        {
+            if (scene.Template != SCENE_TEMPLATE)
+            {
+                var index = scene.DependencyResolver.Resolve<UserSessionCache>();
+                scene.Connected.Add(index.OnConnected, 1000);
+                scene.Disconnected.Add(args => index.OnDisconnected(args.Peer));
+            }
         }
 
         private void RegisterSceneDependencies(IDependencyBuilder b, ISceneHost scene)
         {
             if (scene.Template == SCENE_TEMPLATE)
             {
-                b.Register<UserSessions>();
+                b.Register<UserSessions>().As<IUserSessions>();
                 b.Register<UserPeerIndex>().As<IUserPeerIndex>().SingleInstance();
                 b.Register<PeerUserIndex>().As<IPeerUserIndex>().SingleInstance();
-                b.Register<DeviceIdentifierAuthenticationProvider>().As<IAuthenticationProvider>();
+                //b.Register<DeviceIdentifierAuthenticationProvider>().As<IAuthenticationProvider>();
                 b.Register<AdminImpersonationAuthenticationProvider>().As<IAuthenticationProvider>();
-                b.Register<AuthenticationService>().As<IAuthenticationService>();
+                b.Register<CredentialsRenewer>().AsSelf().As<IAuthenticationEventHandler>().SingleInstance();
+
+            }
+            else
+            {
+                
+                b.Register<UserSessionsProxy>(dr => new UserSessionsProxy(
+                      dr.Resolve<ISceneHost>(),
+                      dr.Resolve<ISerializer>(),
+                      dr.Resolve<IEnvironment>(),
+                      dr.Resolve<IServiceLocator>(),
+                      dr.Resolve<UserSessionCache>()))
+                   .As<IUserSessions>().InstancePerRequest();
             }
         }
 
@@ -117,72 +144,27 @@ namespace Stormancer.Server.Users
             //b.Register<SingleNodeActionStore>().As<IActionStore>().SingleInstance();
             b.Register<SceneAuthorizationController>();
             b.Register<UserSessionController>();
-            b.Register<AuthenticationController>();
-            b.Register<UserManagementConfig>().SingleInstance();
+            b.Register<AuthenticationController>().InstancePerRequest();
+            b.Register<AuthenticationService>().As<IAuthenticationService>().InstancePerRequest();
 
             b.Register<UserService>().As<IUserService>();
-            b.Register<UserSessionsProxy>().As<IUserSessions>();
 
+            b.Register<UserManagementConfig>().SingleInstance();
             b.Register<UsersAdminController>();
             b.Register<AdminWebApiConfig>().As<IAdminWebApiConfig>();
+
+            b.Register<UserSessionCache>().AsSelf().InstancePerScene();
+            b.Register<PlatformSpecificServices>().As<IPlatformSpecificServices>();
         }
 
         private void HostStarting(IHost host)
         {
-            
             host.AddSceneTemplate(SCENE_TEMPLATE, AuthenticatorSceneFactory);
         }
 
         private void AuthenticatorSceneFactory(ISceneHost scene)
         {
-            scene.AddProcedure("sendRequest", async ctx =>
-            {
-                var userId = ctx.ReadObject<string>();
-                var sessions = scene.DependencyResolver.Resolve<IUserSessions>();
-                var peer = await sessions.GetPeer(userId);
-
-                if (peer == null)
-                {
-                    throw new ClientException($"userDisconnected?id={userId}");
-                }
-                var tcs = new TaskCompletionSource<bool>();
-
-                var rpc = scene.DependencyResolver.Resolve<RpcService>();
-                var disposable = rpc.Rpc("sendRequest", peer, s =>
-                {
-                    ctx.InputStream.CopyTo(s);
-                }, PacketPriority.MEDIUM_PRIORITY).Subscribe(packet =>
-                {
-                    ctx.SendValue(s => packet.Stream.CopyTo(s));
-                }, (error) =>
-                {
-                    tcs.SetException(error);
-                },
-                () =>
-                {
-                    tcs.SetResult(true);
-                });
-
-                ctx.CancellationToken.Register(() =>
-                {
-                    disposable.Dispose();
-                });
-                try
-                {
-                    await tcs.Task;
-                }
-                catch(TaskCanceledException ex)
-                {
-                    if (ex.Message == "Peer disconnected")
-                    {
-                        throw new ClientException($"userDisconnected?id={userId}");
-                    }
-                    else
-                    {
-                        throw new ClientException("requestCancelled");
-                    }
-                }
-            });
+          
 
 
 
@@ -191,14 +173,12 @@ namespace Stormancer.Server.Users
             scene.AddController<SceneAuthorizationController>();
             scene.AddController<UserSessionController>();
 
-            scene.Disconnected.Add(async args =>
-            {
-                await scene.GetComponent<UserSessions>().LogOut(args.Peer);
-            });
 
-            
+
+
         }
 
-      
+
     }
 }
+

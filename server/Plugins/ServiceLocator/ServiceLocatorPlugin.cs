@@ -39,7 +39,7 @@ namespace Stormancer.Plugins.ServiceLocator
               };
             ctx.HostDependenciesRegistration += (IDependencyBuilder builder) =>
               {
-                  builder.Register<ServiceLocator>().As<IServiceLocator>().InstancePerDependency();
+                  builder.Register<ServiceLocator>().As<IServiceLocator>().InstancePerRequest();
               };
             ctx.SceneCreated += (ISceneHost scene) =>
             {

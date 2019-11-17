@@ -19,10 +19,13 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Server.Plugins.AdminApi;
+using Server.Plugins.API;
 using Stormancer.Core;
 using Stormancer.Diagnostics;
 using Stormancer.Plugins;
+using Stormancer.Server.Users;
 using System;
 using System.Threading.Tasks;
 
@@ -35,23 +38,41 @@ namespace Stormancer.Server.Analytics
         public void Build(HostPluginBuildContext ctx)
         {
             ctx.HostDependenciesRegistration += (IDependencyBuilder builder) =>
-            {
-                builder.Register<AnalyticsController>().InstancePerRequest();
-                builder.Register<AnalyticsService>().As<IAnalyticsService>().SingleInstance();
-            };
+              {
+                  builder.Register<AnalyticsController>().InstancePerRequest();
+                  builder.Register<AnalyticsService>().As<IAnalyticsService>().SingleInstance();
+                  //builder.Register<AnalyticsEventHandler>().As<IUserSessionEventHandler>().As<IApiHandler>().SingleInstance();
+              };
 
             ctx.HostStarted += (IHost host) =>
             {
-                var analyticsService = host.DependencyResolver.Resolve<IAnalyticsService>();
+                Task.Run(async () =>
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            await Task.Delay(1000 * 5);
+                            var analyticsService = host.DependencyResolver.Resolve<IAnalyticsService>();
+                            await analyticsService.Flush();                          
+                        }
+                        catch (Exception ex)
+                        {
+                            host.DependencyResolver.Resolve<ILogger>().Log(LogLevel.Error, "analytics", "failed to push analytics", ex);
+                        }
+                    }
+
+                });
             };
 
             ctx.SceneCreated += (ISceneHost scene) =>
-            {
-                if (scene.Metadata.ContainsKey(METADATA_KEY))
-                {
-                    scene.AddController<AnalyticsController>();
-                }
-            };
+             {
+                 if (scene.Metadata.ContainsKey(METADATA_KEY))
+                 {
+                     scene.AddController<AnalyticsController>();
+                 }
+             };
         }
     }
 }
+

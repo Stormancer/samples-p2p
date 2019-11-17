@@ -19,12 +19,14 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Server.Plugins.API;
 using Stormancer;
 using Stormancer.Diagnostics;
 using Stormancer.Platform.Core.Cryptography;
 using Stormancer.Plugins;
 using Stormancer.Server.Components;
+using System;
 using System.Threading.Tasks;
 
 namespace Stormancer.Server.Users
@@ -47,34 +49,51 @@ namespace Stormancer.Server.Users
         }
         public async Task GetToken(RequestContext<IScenePeerClient> ctx)
         {
-            _logger.Log(LogLevel.Trace, "authorization", "Receiving a token request to access a scene", new { });
+            
 
             var client = await _accessor.GetApplicationClient();
 
             var user = await _sessions.GetUser(ctx.RemotePeer);
             if (user == null)
             {
-                throw new ClientException("Client is not logged in.");
+                throw new ClientException("userDisconnected");
             }
             var sceneId = ctx.ReadObject<string>();
-            _logger.Log(LogLevel.Debug, "authorization", $"Authorizing access to scene '{sceneId}'", new { sceneId, user.Id });
+           
             var token = await client.CreateConnectionToken(sceneId, new byte[0], "application/octet-stream");
 
-            ctx.SendValue(token);
+            await ctx.SendValue(token);
         }
 
         public async Task GetBearerToken(RequestContext<IScenePeerClient> ctx)
         {
-            ctx.SendValue(await _sessions.GetBearerToken(ctx.RemotePeer.SessionId));
+            var sessionId = ctx.RemotePeer.SessionId;
+            var app = await _environment.GetApplicationInfos();
+            var session = await _sessions.GetSessionById(sessionId);
+            var token = TokenGenerator.CreateToken(new BearerTokenData { SessionId = sessionId, pid = session.platformId, userId = session.User.Id, IssuedOn = DateTime.UtcNow, ValidUntil = DateTime.UtcNow + TimeSpan.FromHours(1) }, app.PrimaryKey);
+            await ctx.SendValue(token);
         }
-
        
         public async Task GetUserFromBearerToken(RequestContext<IScenePeerClient> ctx)
         {
-            var session = await _sessions.GetSessionByBearerToken(ctx.ReadObject<string>());
-           
+            var app = await _environment.GetApplicationInfos();
+            var bearerToken = ctx.ReadObject<string>();
 
-            ctx.SendValue(session?.User?.Id);
+            if (string.IsNullOrEmpty(bearerToken))
+            {
+                _logger.Log(LogLevel.Error, "authorization", $"Missing bearer token when calling GetUserFromBearerToken()", new { });
+            }
+            var data = TokenGenerator.DecodeToken<BearerTokenData>(bearerToken, app.PrimaryKey);
+            if (data == null)
+            {
+                throw new ClientException("Invalid Token");
+            }
+
+            if (string.IsNullOrEmpty(data?.userId))
+            {
+                _logger.Log(LogLevel.Error, "authorization", $"Failed to retrieve userId from bearer token data", new { data });
+            }
+            await ctx.SendValue(data?.userId);
         }
     }
 }

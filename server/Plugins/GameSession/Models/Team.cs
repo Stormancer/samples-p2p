@@ -19,13 +19,35 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+using MsgPack.Serialization;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Stormancer.Server.GameSession
 {
     public class Team
     {
+        public Team(params Group[] groups)
+        {
+            Groups = new List<Group>(groups);
+        }
+
+        public Team(IEnumerable<Group> groups)
+        {
+            Groups = new List<Group>(groups);
+        }
+
+        public Team()
+        {
+            // Default ctor for backward compatibility
+        }
+
+        [MessagePackMember(0)]
         public string TeamId { get; set; }
+        [MessagePackMember(1)]
         public List<Group> Groups { get; set; } = new List<Group>();
+
+        [MessagePackMember(2)]
+        public IEnumerable<string> PlayerIds { get => Groups.SelectMany(group => group.PlayersId); }
     }
 }

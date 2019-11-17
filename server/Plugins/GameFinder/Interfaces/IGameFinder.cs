@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -20,12 +20,20 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 
 namespace Stormancer.Server.GameFinder
 {
+   
     public interface IGameFinder
     {
         Task<GameFinderResult> FindGames(GameFinderContext gameFinderContext);
+
+        Dictionary<string, int> GetMetrics();
+
+        JObject ComputeDataAnalytics(GameFinderContext gameFinderContext);
+
         void RefreshConfig(dynamic specificConfig, dynamic config);
     }
 }

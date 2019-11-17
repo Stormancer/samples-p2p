@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Newtonsoft.Json.Linq;
 using System;
 using System.Net;
@@ -29,8 +30,11 @@ namespace Stormancer.Server.Analytics
 {
     public interface IAnalyticsService
     {
-        void Push(string type, JObject document);
+        void Push(string type,string category, JObject document);
 
         void Push(AnalyticsDocument document);
+
+        Task Flush();
     }
 }
+

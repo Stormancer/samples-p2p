@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Stormancer.Server.Database;
 using System;
 using System.Collections.Generic;
@@ -36,7 +37,7 @@ namespace Stormancer.Server
             var success = false;
             var result = await index.GetOrAdd(key, v);
 
-            if(result.Version == 0)//Just added new value
+            if (result.Version == 0) //Just added new value
             {
                 return result;
             }
@@ -70,7 +71,7 @@ namespace Stormancer.Server
         /// <param name="mutator"></param>
         /// <param name="retries"></param>
         /// <returns></returns>
-        public static async Task<Result<TValue>> UpdateWithRetries<TValue>(this IIndex<TValue> index, string key, Func<TValue, TValue> mutator, int retries = 32)
+        public static async Task<Result<TValue>> UpdateWithRetries<TValue>(this IIndex<TValue> index, string key, Func<TValue, Task<TValue>> mutator, int retries = 32)
         {
             var success = false;
             var result = await index.TryGet(key);
@@ -85,7 +86,7 @@ namespace Stormancer.Server
             while (!success && i < retries)
             {
                 i++;
-                var newValue = mutator(group);
+                var newValue = await mutator(group);
                 result = await index.TryUpdate(key, newValue, version);
                 success = result.Success;
                 group = result.Value;

@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -35,7 +35,7 @@ namespace Stormancer.Plugins
         {
             return async (RequestContext<IScenePeerClient> request) =>
             {
-                request.SendValue(await typedAction(request.ReadObject<TData>()));
+                await request.SendValue(await typedAction(request.ReadObject<TData>()));
             };
         }
 
@@ -53,7 +53,7 @@ namespace Stormancer.Plugins
             {
                 var userData = request.RemotePeer.GetUserData<TUserData>();
 
-                request.SendValue(await typedAction(userData, request.ReadObject<TData>()));
+                await request.SendValue(await typedAction(userData, request.ReadObject<TData>()));
             };
         }
 
@@ -77,7 +77,7 @@ namespace Stormancer.Plugins
 
                 var result = await typedAction(userData);
 
-                request.SendValue(result);
+                await request.SendValue(result);
 
             };
         }

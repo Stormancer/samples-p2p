@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Server.Plugins.API;
 using Stormancer;
 using Stormancer.Core;
@@ -58,12 +59,18 @@ namespace Stormancer.Server.Analytics
             }
 
             // Add some meta data for kibana
-            Newtonsoft.Json.Linq.JObject content = Newtonsoft.Json.Linq.JObject.Parse(documentDto.Content);//Try parse document            
-            AnalyticsDocument document = new AnalyticsDocument { Type = documentDto.Type ,Content = content, CreationDate = DateTime.UtcNow };
-            _analytics.Push(document);
-
+            try
+            {
+                Newtonsoft.Json.Linq.JObject content = Newtonsoft.Json.Linq.JObject.Parse(documentDto.Content);//Try parse document            
+                AnalyticsDocument document = new AnalyticsDocument { Type = documentDto.Type, Content = content, CreationDate = DateTime.UtcNow };
+                _analytics.Push(document);
+            }
+            catch (Exception)
+            {
+                _logger.Log(LogLevel.Error, "analytics", $"Invalid analytics json received", documentDto.Content);
+            }
             return Task.CompletedTask;
-
         }
     }
 }
+

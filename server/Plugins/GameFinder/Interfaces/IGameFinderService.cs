@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -21,6 +21,7 @@
 // SOFTWARE.
 using Stormancer.Core;
 using Stormancer.Plugins;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -34,6 +35,8 @@ namespace Stormancer.Server.GameFinder
         Task FindGame(RequestContext<IScenePeerClient> request);
         Task ResolveReadyRequest(Packet<IScenePeerClient> packet);
         Task CancelGame(Packet<IScenePeerClient> packet);
-        Task CancelGame(IScenePeerClient peer);
+        Task CancelGame(IScenePeerClient peer, bool playerRequest);
+
+        Dictionary<string, int> GetMetrics(); 
     }
 }

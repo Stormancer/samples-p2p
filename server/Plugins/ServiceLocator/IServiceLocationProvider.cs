@@ -19,7 +19,13 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+using Newtonsoft.Json.Linq;
+using Stormancer.Server.Users;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Stormancer.Plugins.ServiceLocator
@@ -38,20 +44,15 @@ namespace Stormancer.Plugins.ServiceLocator
 
         public string SceneId { get; set; }
 
-        public Dictionary<string, string> Context { get; } = new Dictionary<string, string>();
 
+        public Dictionary<string, string> Context { get; set; } = new Dictionary<string, string>();
+
+       
+        public Session Session { get; internal set; }
     }
 
-    /// <summary>
-    /// Provides extensibility points for the service locator
-    /// </summary>
     public interface IServiceLocatorProvider
     {
-        /// <summary>
-        /// Called before the default service location logic is called.
-        /// </summary>
-        /// <param name="ctx">A context object that provides details about the current service resolution.</param>
-        /// <returns></returns>
-        Task OnLocatingService(ServiceLocationCtx ctx);
+        Task LocateService(ServiceLocationCtx ctx);
     }
 }

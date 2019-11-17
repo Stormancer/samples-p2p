@@ -1,4 +1,4 @@
-﻿// MIT License
+// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -20,30 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 using Stormancer.Plugins;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Stormancer.Server;
 using Server.Plugins.Configuration;
 
 namespace Stormancer.Configuration
 {
-    public class App
-    {
-        public void Run(IAppBuilder builder)
-        {
-            builder.AddPlugin(new ConfigurationManagerPlugin());
-        }
-    }
-
     public class ConfigurationManagerPlugin : IHostPlugin
     {
         public void Build(HostPluginBuildContext ctx)
         {
-          
             ctx.HostDependenciesRegistration += builder => builder.Register<DefaultConfiguration>().As<IConfiguration>();
         }
     }
 }
+

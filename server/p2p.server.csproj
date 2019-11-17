@@ -9,9 +9,10 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>p2p.server</RootNamespace>
     <AssemblyName>p2p.server</AssemblyName>
-    <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -62,13 +63,13 @@
       <HintPath>bin\SmartFormat.dll</HintPath>
     </Reference>
     <Reference Include="Stormancer.Core, Version=1.15.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Stormancer.Server.1.17.1\lib\Net45\Stormancer.Core.dll</HintPath>
+      <HintPath>..\packages\Stormancer.Server.1.24.1\lib\Net45\Stormancer.Core.dll</HintPath>
     </Reference>
     <Reference Include="Stormancer.Management.Client">
       <HintPath>..\..\..\..\..\p4\CoreServices\Stormancer\ServerAppApoc\bin\Stormancer.Management.Client.dll</HintPath>
     </Reference>
-    <Reference Include="Stormancer.Server, Version=1.17.1.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Stormancer.Server.1.17.1\lib\Net45\Stormancer.Server.dll</HintPath>
+    <Reference Include="Stormancer.Server, Version=1.24.1.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Stormancer.Server.1.24.1\lib\Net45\Stormancer.Server.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -122,6 +123,7 @@
     <Compile Include="Plugins\API\ControllerHelper.cs" />
     <Compile Include="Plugins\API\IControllerFactory.cs" />
     <Compile Include="Plugins\API\IRpcHandler.cs" />
+    <Compile Include="Plugins\Configuration\App.cs" />
     <Compile Include="Plugins\Configuration\ConfigurationManagerPlugin.cs" />
     <Compile Include="Plugins\Configuration\IConfiguration.cs" />
     <Compile Include="Plugins\Database\ESClientFactory.cs" />
@@ -129,12 +131,14 @@
     <Compile Include="Plugins\Database\Formatters.cs" />
     <Compile Include="Plugins\Database\IIndex.cs" />
     <Compile Include="Plugins\Database\IndexExtensions.cs" />
+    <Compile Include="Plugins\Database\MemoryCache.cs" />
     <Compile Include="Plugins\GameFinder\App.cs" />
     <Compile Include="Plugins\GameFinder\Default\DefaultGameFinder.cs" />
     <Compile Include="Plugins\GameFinder\Default\DefaultGameFinderResolver.cs" />
     <Compile Include="Plugins\GameFinder\Dto\GameFinderRequest.cs" />
-    <Compile Include="Plugins\GameFinder\Dto\GameFinderResponse.cs" />
     <Compile Include="Plugins\GameFinder\GameFinderConfig.cs" />
+    <Compile Include="Plugins\GameFinder\GameFinderConfigController.cs" />
+    <Compile Include="Plugins\GameFinder\GameFinderConfigService.cs" />
     <Compile Include="Plugins\GameFinder\GameFinderController.cs" />
     <Compile Include="Plugins\GameFinder\GameFinderPeerService.cs" />
     <Compile Include="Plugins\GameFinder\GameFinderPlugin.cs" />
@@ -143,6 +147,7 @@
     <Compile Include="Plugins\GameFinder\GameFinderStatusUpdate.cs" />
     <Compile Include="Plugins\GameFinder\IGameFinderEventHandler.cs" />
     <Compile Include="Plugins\GameFinder\Interfaces\IGameFinder.cs" />
+    <Compile Include="Plugins\GameFinder\Interfaces\IGameFinderConfigService.cs" />
     <Compile Include="Plugins\GameFinder\Interfaces\IGameFinderContext.cs" />
     <Compile Include="Plugins\GameFinder\Interfaces\IGameFinderDataExtractor.cs" />
     <Compile Include="Plugins\GameFinder\Interfaces\IGameFinderResolutionWriterContext.cs" />
@@ -150,6 +155,8 @@
     <Compile Include="Plugins\GameFinder\Interfaces\IGameFinderResolverContext.cs" />
     <Compile Include="Plugins\GameFinder\Interfaces\IGameFinderService.cs" />
     <Compile Include="Plugins\GameFinder\Models\Game.cs" />
+    <Compile Include="Plugins\GameFinder\Models\GameFinderData.cs" />
+    <Compile Include="Plugins\GameFinder\Models\GameFinderRequestState.cs" />
     <Compile Include="Plugins\GameFinder\Models\GameFinderResult.cs" />
     <Compile Include="Plugins\GameFinder\Models\GameReadyCheckState.cs" />
     <Compile Include="Plugins\GameFinder\Models\Group.cs" />
@@ -171,20 +178,38 @@
     <Compile Include="Plugins\GameSession\Models\Group.cs" />
     <Compile Include="Plugins\GameSession\Models\ShutdownMode.cs" />
     <Compile Include="Plugins\GameSession\Models\Team.cs" />
+    <Compile Include="Plugins\GameSession\ServerPools\CompositeServerPool.cs" />
+    <Compile Include="Plugins\GameSession\ServerPools\IGameServerProvider.cs" />
+    <Compile Include="Plugins\GameSession\ServerPools\ProviderBasedServerPool.cs" />
+    <Compile Include="Plugins\GameSession\ServerPools\ServerPool.cs" />
+    <Compile Include="Plugins\GameSession\ServerPools\ServerPoolController.cs" />
+    <Compile Include="Plugins\GameSession\ServerPools\ServerPools.cs" />
+    <Compile Include="Plugins\GameSession\servers\LocalServer.cs" />
     <Compile Include="Plugins\Management\ManagementPlugin.cs" />
+    <Compile Include="Plugins\Notifications\Admin\InAppNotificationsAdminController.cs" />
+    <Compile Include="Plugins\Notifications\Admin\InAppNotificationsWebApiConfig.cs" />
+    <Compile Include="Plugins\Notifications\App.cs" />
+    <Compile Include="Plugins\Notifications\EmailNotificationProvider.cs" />
+    <Compile Include="Plugins\Notifications\InAppNotificationProvider.cs" />
+    <Compile Include="Plugins\Notifications\InAppNotificationRepository.cs" />
+    <Compile Include="Plugins\Notifications\INotificationChannel.cs" />
+    <Compile Include="Plugins\Notifications\INotificationProvider.cs" />
+    <Compile Include="Plugins\Notifications\Models\InAppNotificationRecord.cs" />
+    <Compile Include="Plugins\Notifications\NotificationExtensions.cs" />
+    <Compile Include="Plugins\Notifications\NotificationPlugin.cs" />
+    <Compile Include="Plugins\Notifications\ProxyNotificationChannel.cs" />
     <Compile Include="Plugins\ServiceLocator\App.cs" />
     <Compile Include="Plugins\ServiceLocator\IServiceLocationProvider.cs" />
     <Compile Include="Plugins\ServiceLocator\IServiceLocator.cs" />
     <Compile Include="Plugins\ServiceLocator\LocatorController.cs" />
     <Compile Include="Plugins\ServiceLocator\ServiceLocator.cs" />
     <Compile Include="Plugins\ServiceLocator\ServiceLocatorPlugin.cs" />
-    <Compile Include="Plugins\Users\AdminImpersonationAuthenticationProvider.cs" />
     <Compile Include="Plugins\Users\AdminWebApiConfig.cs" />
     <Compile Include="Plugins\Users\App.cs" />
     <Compile Include="Plugins\Users\AuthenticationController.cs" />
     <Compile Include="Plugins\Users\AuthenticationService.cs" />
     <Compile Include="Plugins\Users\AuthenticatorResult.cs" />
-    <Compile Include="Plugins\Users\DeviceIdentifierAuthenticationProvider.cs" />
+    <Compile Include="Plugins\Users\CredentialsRenewer.cs" />
     <Compile Include="Plugins\Users\IActionStore.cs" />
     <Compile Include="Plugins\Users\IAuthenticationEventHandler.cs" />
     <Compile Include="Plugins\Users\IAuthenticationProvider.cs" />
@@ -197,19 +222,29 @@
     <Compile Include="Plugins\Users\IUserSessions.cs" />
     <Compile Include="Plugins\Users\LoginResult.cs" />
     <Compile Include="Plugins\Users\PlatformSpecificServices.cs" />
+    <Compile Include="Plugins\Users\Providers\AdminImpersonationAuthenticationProvider.cs" />
+    <Compile Include="Plugins\Users\Providers\DeviceIdentifierAuthenticationProvider.cs" />
+    <Compile Include="Plugins\Users\Providers\LoginPasswordAuthenticationProvider.cs" />
     <Compile Include="Plugins\Users\PseudoUserRelation.cs" />
     <Compile Include="Plugins\Users\SceneAuthorizationController.cs" />
+    <Compile Include="Plugins\Users\Test\TestAuthenticationProvider.cs" />
+    <Compile Include="Plugins\Users\Test\UsersTestController.cs" />
+    <Compile Include="Plugins\Users\Test\UsersTestPlugin.cs" />
     <Compile Include="Plugins\Users\User.cs" />
     <Compile Include="Plugins\Users\UserExtensions.cs" />
     <Compile Include="Plugins\Users\UsersAdminController.cs" />
     <Compile Include="Plugins\Users\UserService.cs" />
+    <Compile Include="Plugins\Users\UserSessionCache.cs" />
     <Compile Include="Plugins\Users\UserSessionController.cs" />
     <Compile Include="Plugins\Users\UserSessions.cs" />
     <Compile Include="Plugins\Users\UserSessionsProxy.cs" />
     <Compile Include="Plugins\Users\UsersManagementPlugin.cs" />
-    <Compile Include="Plugins\Utils\EventHandlingExtensions.cs" />
     <Compile Include="Plugins\Utils\Extensions\StringExtensions.cs" />
+    <Compile Include="Plugins\Utils\Extensions\TaskExtensions.cs" />
     <Compile Include="Plugins\Utils\Helpers.cs" />
+    <Compile Include="Plugins\Utils\RetryPolicies.cs" />
+    <Compile Include="Plugins\Utils\TaskHelper.cs" />
+    <Compile Include="Plugins\Utils\TaskQueue.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -235,6 +270,8 @@
     <Content Include="bin\System.Web.Http.Owin.dll" />
     <Content Include="bin\System.Web.Http.Tracing.dll" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <Folder Include="Plugins\GameSession\providers\" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

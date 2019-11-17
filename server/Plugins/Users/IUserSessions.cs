@@ -19,6 +19,8 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
+using Newtonsoft.Json.Linq;
 using Stormancer;
 using System;
 using System.Collections.Generic;
@@ -37,6 +39,7 @@ namespace Stormancer.Server.Users
         /// <param name="peer"></param>
         /// <returns>An user instance, or null if the peer isn't authenticated.</returns>
         Task<User> GetUser(IScenePeerClient peer);
+
         /// <summary>
         /// Gets the peer that has been authenticated with the provided user id.
         /// </summary>
@@ -50,29 +53,79 @@ namespace Stormancer.Server.Users
         Task<PlatformId> GetPlatformId(string userId);
 
         /// <summary>
-        /// Gets a session by the user id (returns null if user isn't currently connected)
+        /// Gets a session by the user id (returns null if user isn't currently connected to the scene)
         /// </summary>
         /// <param name="userId"></param>
         /// <returns></returns>
-        Task<Session> GetSessionByUserId(string userId);
+        Task<Session> GetSessionByUserId(string userId, bool forceRefresh = false);
 
-        Task<Session> GetSession(IScenePeerClient peer);
+        Task<Session> GetSession(IScenePeerClient peer, bool forceRefresh = false);
 
         /// <summary>
-        /// Gets a session by the session id of the peer
+        /// Gets a session by the session id of the peer (returns null if the user isn't currently connected to the scene)
         /// </summary>
         /// <param name="sessionId"></param>
         /// <returns></returns>
-        Task<Session> GetSessionById(string sessionId, string authType = "");
+        Task<Session> GetSessionById(string sessionId, bool forceRefresh = false);
 
-        Task<Session> GetSession(PlatformId platformId);
+        Task<Session> GetSessionById(string sessionId, string authType, bool forceRefresh = false);
 
-        Task UpdateSessionData<T>(PlatformId platformId, string key, T data);
-        Task<T> GetSessionData<T>(PlatformId platformId, string key);
+        Task<Session> GetSession(PlatformId platformId, bool forceRefresh = false);
+
+        /// <summary>
+        /// Update a user's session data entry with raw data.
+        /// </summary>
+        /// <remarks>If <paramref name="key"/> is not present in the session data, it will be added.</remarks>
+        /// <param name="sessionId">Id of the session</param>
+        /// <param name="key">Session data key</param>
+        /// <param name="data">Raw data to be set for <paramref name="key"/></param>
+        /// <returns></returns>
+        Task UpdateSessionData(string sessionId, string key, byte[] data);
+        /// <summary>
+        /// Retrieve a user's raw session data entry.
+        /// </summary>
+        /// <param name="sessionId">Id of the session</param>
+        /// <param name="key">Key of the data to be retrieved</param>
+        /// <returns>The raw data for <paramref name="key"/>, or <c>null</c> if <paramref name="key"/> does not exist.</returns>
+        Task<byte[]> GetSessionData(string sessionId, string key);
+        /// <summary>
+        /// Update a user's session data entry with an object.
+        /// </summary>
+        /// <remarks>The object is serialized using the server's serializer.</remarks>
+        /// <typeparam name="T">Type of the object to use as session data</typeparam>
+        /// <param name="sessionId">Id of the session</param>
+        /// <param name="key">Session data key</param>
+        /// <param name="data">Object to store as session data for <paramref name="key"/></param>
+        /// <returns></returns>
+        Task UpdateSessionData<T>(string sessionId, string key, T data);
+        /// <summary>
+        /// Retrieve a user's session data entry, deserialized into a specific type.
+        /// </summary>
+        /// <typeparam name="T">Type of the data to be retrieved</typeparam>
+        /// <param name="sessionId">Id of the session</param>
+        /// <param name="key">Key of the data to be retrieved</param>
+        /// <returns>The deserialized object at <paramref name="key"/>, or the default value for <typeparamref name="T"/> of <paramref name="key"/> doesn't exist.</returns>
+        Task<T> GetSessionData<T>(string sessionId, string key);
+
         Task<string> GetBearerToken(string sessionId);
+        Task<string> GetBearerToken(Session sessionId);
+
         Task<BearerTokenData> DecodeBearerToken(string token);
 
-        Task<Session> GetSessionByBearerToken(string token);
+        Task<Session> GetSessionByBearerToken(string token, bool forceRefresh = false);
+
+        Task<Dictionary<string, User>> GetUsers(params string[] userIds);
+
+        Task<IEnumerable<User>> Query(IEnumerable<KeyValuePair<string,string>> query, int take, int skip);
+
+        /// <summary>
+        /// Updates the user handle, and optionally adds an hash number (ie name#2424) to make ids unique.
+        /// </summary>
+        /// <param name="userId"></param>
+        /// <param name="newHandle"></param>
+        /// <param name="appendHash"></param>
+        /// <returns></returns>
+        Task UpdateUserHandle(string userId, string newHandle, bool appendHash);
     }
 
     public class BearerTokenData
@@ -83,6 +136,7 @@ namespace Stormancer.Server.Users
         public string userId { get; set; }
         public DateTime IssuedOn { get; set; }
         public DateTime ValidUntil { get; set; }
+        public string AuthenticatorUrl { get; set; }
     }
 
     public struct PlatformId
@@ -91,6 +145,12 @@ namespace Stormancer.Server.Users
         {
             return Platform + ":" + OnlineId;
         }
+        public static PlatformId Parse(string value)
+        {
+            var els = value.Split(':');
+            return new PlatformId { Platform = els[0], OnlineId = els[1] };
+        }
+
         public string Platform { get; set; }
         public string OnlineId { get; set; }
 
@@ -113,3 +173,4 @@ namespace Stormancer.Server.Users
 
     }
 }
+

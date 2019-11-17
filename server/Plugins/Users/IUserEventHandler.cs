@@ -19,6 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+
 using Stormancer.Server.Users;
 using System;
 using System.Collections.Generic;
@@ -32,10 +33,20 @@ namespace Stormancer.Server.Users
 {
     public interface IUserEventHandler
     {
+        Task OnAuthenticationChanged(AuthenticationChangedCtx ctx);
+
         Task OnMergingUsers(IEnumerable<Stormancer.Server.Users.User> users);
 
         Task<Object> OnMergedUsers(IEnumerable<Stormancer.Server.Users.User> enumerable, Stormancer.Server.Users.User mainUser);
 
         BulkDescriptor OnBuildMergeQuery(IEnumerable<Stormancer.Server.Users.User> enumerable, Stormancer.Server.Users.User mainUser, object data, BulkDescriptor desc);
     }
+
+
+    public class AuthenticationChangedCtx
+    {
+        public string Type { get; set; }
+        public User User { get; internal set; }
+    }
 }
+

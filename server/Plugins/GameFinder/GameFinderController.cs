@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -22,12 +22,14 @@
 using Server.Plugins.API;
 using Stormancer.Core;
 using Stormancer.Plugins;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Stormancer.Server.GameFinder
 {
     class GameFinderController : ControllerBase
     {
+        public const string FindGameS2SRoute = "gamefinder.findgame";
         private readonly IGameFinderService _gameFinderService;
 
         public GameFinderController(IGameFinderService gameFinderService)
@@ -35,9 +37,16 @@ namespace Stormancer.Server.GameFinder
             _gameFinderService = gameFinderService;
         }
 
+        [Api(ApiAccess.Scene2Scene, ApiType.Rpc, Route = FindGameS2SRoute)]
         public Task FindGame(RequestContext<IScenePeer> request)
         {
             return _gameFinderService.FindGameS2S(request);
+        }
+
+        [Api(ApiAccess.Scene2Scene, ApiType.Rpc)]
+        public Dictionary<string, int> GetMetrics()
+        {
+            return _gameFinderService.GetMetrics();
         }
     }
 }

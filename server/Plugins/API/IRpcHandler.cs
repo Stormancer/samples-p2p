@@ -1,4 +1,4 @@
-// MIT License
+﻿// MIT License
 //
 // Copyright (c) 2019 Stormancer
 //
@@ -37,21 +37,24 @@ namespace Server.Plugins.API
         {
             Context = ctx;
             Method = method;
-          
-            Builder = builder=> { };
+            Route = route;
+            Builder = builder => { };
 
         }
         public T Context { get; }
         public MethodInfo Method { get; }
-        
+
         public string Route { get; }
         public Action<IDependencyBuilder> Builder { get; }
-        
-      
+
+
     }
     public interface IApiHandler
     {
-        Task RunRpc(ApiCallContext<RequestContext<IScenePeerClient>> ctx, Func<ApiCallContext<RequestContext<IScenePeerClient>>,Task> next);
+        Task OnConnected(IScenePeerClient client);
+        Task OnDisconnected(IScenePeerClient client);
+
+        Task RunRpc(ApiCallContext<RequestContext<IScenePeerClient>> ctx, Func<ApiCallContext<RequestContext<IScenePeerClient>>, Task> next);
         Task RunRpc(ApiCallContext<RequestContext<IScenePeer>> ctx, Func<ApiCallContext<RequestContext<IScenePeer>>, Task> next);
         Task RunFF(ApiCallContext<Packet<IScenePeer>> ctx, Func<ApiCallContext<Packet<IScenePeer>>, Task> next);
         Task RunFF(ApiCallContext<Packet<IScenePeerClient>> ctx, Func<ApiCallContext<Packet<IScenePeerClient>>, Task> next);
