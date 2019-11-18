@@ -65,7 +65,7 @@ namespace Stormancer.Server.GameFinder
         private readonly Func<IEnumerable<IGameFinderEventHandler>> handlers;
         private readonly IAnalyticsService analytics;
         private readonly IGameFinder _gameFinder;
-        private readonly IGameFinderResolver _resolver;
+
         private readonly ILogger _logger;
         private readonly ISerializer _serializer;
         private readonly GameFinderData _data;
@@ -76,10 +76,10 @@ namespace Stormancer.Server.GameFinder
         public GameFinderService(ISceneHost scene,
             IEnumerable<IGameFinderDataExtractor> extractors,
             Func<IEnumerable<IGameFinderEventHandler>> handlers,
+
             IAnalyticsService analytics,
             IEnvironment env,
             IGameFinder gameFinder,
-            IGameFinderResolver resolver,
             ILogger logger,
             IConfiguration config,
             ISerializer serializer,
@@ -89,7 +89,7 @@ namespace Stormancer.Server.GameFinder
             this.handlers = handlers;
             this.analytics = analytics;
             _gameFinder = gameFinder;
-            _resolver = resolver;
+            
             _logger = logger;
             _serializer = serializer;
             _data = data;
@@ -135,7 +135,7 @@ namespace Stormancer.Server.GameFinder
             }
 
             _gameFinder.RefreshConfig(specificConfig, config);
-            _resolver.RefreshConfig(specificConfig);
+
         }
 
         // This function called from GameFinder plugin
@@ -423,187 +423,192 @@ namespace Stormancer.Server.GameFinder
 
         private async Task FindGamesOnce()
         {
-            var waitingClients = _data.waitingGroups.Where(kvp => kvp.Value.State == RequestState.Ready).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-            try
+            using (var scope = _scene.DependencyResolver.CreateChild(global::Server.Plugins.API.Constants.ApiRequestTag))
             {
-
-                foreach (var value in waitingClients.Values)
+                var waitingClients = _data.waitingGroups.Where(kvp => kvp.Value.State == RequestState.Ready).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                try
                 {
-                    value.State = RequestState.Searching;
-                    value.Candidate = null;
-                }
 
-                GameFinderContext mmCtx = new GameFinderContext();
-                mmCtx.WaitingClient.AddRange(waitingClients.Keys);
-
-                var games = await this._gameFinder.FindGames(mmCtx);
-
-                analytics.Push("gameFinder", "pass", JObject.FromObject(new
-                {
-                    type = _data.kind,
-                    playersWaiting = _data.waitingGroups.SelectMany(kvp => kvp.Key.Players).Count(),
-                    groups = _data.waitingGroups.Count(),
-                    customData = _gameFinder.ComputeDataAnalytics(mmCtx)
-                }));
-
-                if (games.Games.Any())
-                {
-                    //_logger.Log(LogLevel.Debug, $"{LOG_CATEGORY}.FindGamesOnce", $"Prepare resolutions {waitingClients.Count} players for {matches.Matches.Count} matches.", new { waitingCount = waitingClients.Count });
-                    await _resolver.PrepareGameResolution(games);
-                }
-
-                foreach (var game in games.Games)
-                {
-                    foreach (var group in game.Teams.SelectMany(t => t.Groups)) //Set game found to prevent players from being gameed again
+                    foreach (var value in waitingClients.Values)
                     {
-                        var state = waitingClients[group];
-                        state.State = RequestState.Found;
-                        state.Candidate = game;
+                        value.State = RequestState.Searching;
+                        value.Candidate = null;
                     }
 
-                    //_logger.Log(LogLevel.Debug, $"{LOG_CATEGORY}.FindGamesOnce", $"Resolve game for {waitingClients.Count} players", new { waitingCount = waitingClients.Count, currentGame = game });
-                    _ = ResolveGameFound(game, waitingClients); // Resolve game, but don't wait for completion.
-                    //_logger.Log(LogLevel.Debug, $"{LOG_CATEGORY}.FindGamesOnce", $"Resolve complete game for {waitingClients.Count} players", new { waitingCount = waitingClients.Count, currentGame = game });
-                }
-            }
-            finally
-            {
+                    GameFinderContext mmCtx = new GameFinderContext();
+                    mmCtx.WaitingClient.AddRange(waitingClients.Keys);
 
-                foreach (var value in waitingClients.Values.Where(v => v.State == RequestState.Searching))
+                    var games = await this._gameFinder.FindGames(mmCtx);
+
+                    analytics.Push("gameFinder", "pass", JObject.FromObject(new
+                    {
+                        type = _data.kind,
+                        playersWaiting = _data.waitingGroups.SelectMany(kvp => kvp.Key.Players).Count(),
+                        groups = _data.waitingGroups.Count(),
+                        customData = _gameFinder.ComputeDataAnalytics(mmCtx)
+                    }));
+
+                    if (games.Games.Any())
+                    {
+                        //_logger.Log(LogLevel.Debug, $"{LOG_CATEGORY}.FindGamesOnce", $"Prepare resolutions {waitingClients.Count} players for {matches.Matches.Count} matches.", new { waitingCount = waitingClients.Count });
+                        await scope.Resolve<IGameFinderResolver>().PrepareGameResolution(games);
+                    }
+
+                    foreach (var game in games.Games)
+                    {
+                        foreach (var group in game.Teams.SelectMany(t => t.Groups)) //Set game found to prevent players from being gameed again
+                        {
+                            var state = waitingClients[group];
+                            state.State = RequestState.Found;
+                            state.Candidate = game;
+                        }
+
+                        //_logger.Log(LogLevel.Debug, $"{LOG_CATEGORY}.FindGamesOnce", $"Resolve game for {waitingClients.Count} players", new { waitingCount = waitingClients.Count, currentGame = game });
+                        _ = ResolveGameFound(game, waitingClients); // Resolve game, but don't wait for completion.
+                                                                    //_logger.Log(LogLevel.Debug, $"{LOG_CATEGORY}.FindGamesOnce", $"Resolve complete game for {waitingClients.Count} players", new { waitingCount = waitingClients.Count, currentGame = game });
+                    }
+                }
+                finally
                 {
-                    value.State = RequestState.Ready;
+
+                    foreach (var value in waitingClients.Values.Where(v => v.State == RequestState.Searching))
+                    {
+                        value.State = RequestState.Ready;
+                    }
                 }
             }
         }
 
         private async Task ResolveGameFound(Game game, Dictionary<Group, GameFinderRequestState> waitingClients)
         {
-            try
+            using (var scope = _scene.DependencyResolver.CreateChild(global::Server.Plugins.API.Constants.ApiRequestTag))
             {
-                var resolverCtx = new GameResolverContext(game);
-                await _resolver.ResolveGame(resolverCtx);
-
-                var ctx = new GameStartedContext();
-                ctx.GameFinderId = this._scene.Id;
-                ctx.Game = game;
-                await handlers().RunEventHandler(h => h.OnGameStarted(ctx), ex => { });
-
-                if (_data.isReadyCheckEnabled)
+                try
                 {
-                    await BroadcastToPlayers(game, UPDATE_NOTIFICATION_ROUTE, (s, sz) =>
+                    var resolverCtx = new GameResolverContext(game);
+                    await scope.Resolve<IGameFinderResolver>().ResolveGame(resolverCtx);
+
+                    var ctx = new GameStartedContext();
+                    ctx.GameFinderId = this._scene.Id;
+                    ctx.Game = game;
+                    await handlers().RunEventHandler(h => h.OnGameStarted(ctx), ex => { });
+
+                    if (_data.isReadyCheckEnabled)
                     {
-
-                        s.WriteByte((byte)GameFinderStatusUpdate.WaitingPlayersReady);
-
-                    });
-
-                    using (var gameReadyCheckState = CreateReadyCheck(game))
-                    {
-                        gameReadyCheckState.StateChanged += update =>
+                        await BroadcastToPlayers(game, UPDATE_NOTIFICATION_ROUTE, (s, sz) =>
                         {
-                            BroadcastToPlayers(game, UPDATE_READYCHECK_ROUTE, (s, sz) =>
-                            {
-                                sz.Serialize(update, s);
-                            });
-                        };
-                        var result = await gameReadyCheckState.WhenCompleteAsync();
 
-                        if (!result.Success)
+                            s.WriteByte((byte)GameFinderStatusUpdate.WaitingPlayersReady);
+
+                        });
+
+                        using (var gameReadyCheckState = CreateReadyCheck(game))
                         {
-                            foreach (var group in result.UnreadyGroups)//Cancel gameFinder for timeouted groups
+                            gameReadyCheckState.StateChanged += update =>
                             {
-                                GameFinderRequestState mrs;
-                                if (_data.waitingGroups.TryGetValue(group, out mrs))
+                                BroadcastToPlayers(game, UPDATE_READYCHECK_ROUTE, (s, sz) =>
                                 {
-                                    mrs.Tcs.TrySetCanceled();
-                                }
-                            }
-                            foreach (var group in result.ReadyGroups)//Put ready groups back in queue.
+                                    sz.Serialize(update, s);
+                                });
+                            };
+                            var result = await gameReadyCheckState.WhenCompleteAsync();
+
+                            if (!result.Success)
                             {
-                                GameFinderRequestState mrs;
-                                if (_data.waitingGroups.TryGetValue(group, out mrs))
+                                foreach (var group in result.UnreadyGroups)//Cancel gameFinder for timeouted groups
                                 {
-                                    mrs.State = RequestState.Ready;
-                                    await BroadcastToPlayers(group, UPDATE_NOTIFICATION_ROUTE, (s, sz) =>
+                                    GameFinderRequestState mrs;
+                                    if (_data.waitingGroups.TryGetValue(group, out mrs))
                                     {
-                                        s.WriteByte((byte)GameFinderStatusUpdate.SearchStart);
-                                    });
-
+                                        mrs.Tcs.TrySetCanceled();
+                                    }
                                 }
-                            }
-                            return; //stop here
-                        }
-                        else
-                        {
-                            //
-                        }
-                    }
-                }
-
-                foreach (var player in await GetPlayers(game.AllGroups.ToArray()))
-                {
-                    try
-                    {
-                        using (var stream = new MemoryStream())
-                        {
-                            var writerContext = new GameFinderResolutionWriterContext(player.Serializer(), stream, player);
-                            // Write the connection token first, if a scene was created by the resolver
-                            if (!string.IsNullOrEmpty(resolverCtx.GameSceneId))
-                            {
-                                using (var scope = _scene.DependencyResolver.CreateChild(global::Server.Plugins.API.Constants.ApiRequestTag))
+                                foreach (var group in result.ReadyGroups)//Put ready groups back in queue.
                                 {
-                                    var gameSessions = scope.Resolve<IGameSessions>();
-                                    var token = await gameSessions.CreateConnectionToken(resolverCtx.GameSceneId, player.SessionId);
-                                    writerContext.WriteObjectToStream(token);
+                                    GameFinderRequestState mrs;
+                                    if (_data.waitingGroups.TryGetValue(group, out mrs))
+                                    {
+                                        mrs.State = RequestState.Ready;
+                                        await BroadcastToPlayers(group, UPDATE_NOTIFICATION_ROUTE, (s, sz) =>
+                                        {
+                                            s.WriteByte((byte)GameFinderStatusUpdate.SearchStart);
+                                        });
+
+                                    }
                                 }
+                                return; //stop here
                             }
                             else
                             {
-                                // Empty connection token, to avoid breaking deserialization client-side
-                                writerContext.WriteObjectToStream("");
+                                //
                             }
-                            if (resolverCtx.ResolutionAction != null)
-                            {
-                                await resolverCtx.ResolutionAction(writerContext);
-                            }
-                            await _scene.Send(new MatchPeerFilter(player.SessionId), UPDATE_NOTIFICATION_ROUTE, s =>
-                            {
-                                s.WriteByte((byte)GameFinderStatusUpdate.Success);
-                                stream.Seek(0, SeekOrigin.Begin);
-                                stream.CopyTo(s);
-                            }
-                            , PacketPriority.MEDIUM_PRIORITY, PacketReliability.RELIABLE);
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.Log(LogLevel.Error, "gamefinder", "An error occured while trying to resolve a game for a player", ex);
-                        await _scene.Send(new MatchPeerFilter(player.SessionId), UPDATE_NOTIFICATION_ROUTE, s =>
-                        {
-                            s.WriteByte((byte)GameFinderStatusUpdate.Failed);
-                        }, PacketPriority.MEDIUM_PRIORITY, PacketReliability.RELIABLE);
-                    }
-                }
 
-                foreach (var group in game.AllGroups)
-                {
-                    foreach (var player in group.Players)
+                    foreach (var player in await GetPlayers(game.AllGroups.ToArray()))
                     {
-                        var sectx = new SearchEndContext();
-                        sectx.GameFinderId = this._scene.Id;
-                        sectx.Group = group;
-                        sectx.PassesCount = ((GameFinderGroupData)group.GroupData).PastGameFinderPasses;
-                        sectx.Reason = SearchEndReason.Succeeded;
-                        await handlers().RunEventHandler(h => h.OnEnd(sectx), ex => { });
+                        try
+                        {
+                            using (var stream = new MemoryStream())
+                            {
+                                var writerContext = new GameFinderResolutionWriterContext(player.Serializer(), stream, player);
+                                // Write the connection token first, if a scene was created by the resolver
+                                if (!string.IsNullOrEmpty(resolverCtx.GameSceneId))
+                                {
+
+                                    var gameSessions = scope.Resolve<IGameSessions>();
+                                    var token = await gameSessions.CreateConnectionToken(resolverCtx.GameSceneId, player.SessionId);
+                                    writerContext.WriteObjectToStream(token);
+
+                                }
+                                else
+                                {
+                                    // Empty connection token, to avoid breaking deserialization client-side
+                                    writerContext.WriteObjectToStream("");
+                                }
+                                if (resolverCtx.ResolutionAction != null)
+                                {
+                                    await resolverCtx.ResolutionAction(writerContext);
+                                }
+                                await _scene.Send(new MatchPeerFilter(player.SessionId), UPDATE_NOTIFICATION_ROUTE, s =>
+                                {
+                                    s.WriteByte((byte)GameFinderStatusUpdate.Success);
+                                    stream.Seek(0, SeekOrigin.Begin);
+                                    stream.CopyTo(s);
+                                }
+                                , PacketPriority.MEDIUM_PRIORITY, PacketReliability.RELIABLE);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Log(LogLevel.Error, "gamefinder", "An error occured while trying to resolve a game for a player", ex);
+                            await _scene.Send(new MatchPeerFilter(player.SessionId), UPDATE_NOTIFICATION_ROUTE, s =>
+                            {
+                                s.WriteByte((byte)GameFinderStatusUpdate.Failed);
+                            }, PacketPriority.MEDIUM_PRIORITY, PacketReliability.RELIABLE);
+                        }
                     }
-                    var state = waitingClients[group];
-                    state.Tcs.TrySetResult(resolverCtx);
+
+                    foreach (var group in game.AllGroups)
+                    {
+                        foreach (var player in group.Players)
+                        {
+                            var sectx = new SearchEndContext();
+                            sectx.GameFinderId = this._scene.Id;
+                            sectx.Group = group;
+                            sectx.PassesCount = ((GameFinderGroupData)group.GroupData).PastGameFinderPasses;
+                            sectx.Reason = SearchEndReason.Succeeded;
+                            await handlers().RunEventHandler(h => h.OnEnd(sectx), ex => { });
+                        }
+                        var state = waitingClients[group];
+                        state.Tcs.TrySetResult(resolverCtx);
+                    }
                 }
-            }
-            catch (Exception)
-            {
-                await BroadcastToPlayers(game, UPDATE_NOTIFICATION_ROUTE, (s, sz) => s.WriteByte((byte)GameFinderStatusUpdate.Failed));
-                throw;
+                catch (Exception)
+                {
+                    await BroadcastToPlayers(game, UPDATE_NOTIFICATION_ROUTE, (s, sz) => s.WriteByte((byte)GameFinderStatusUpdate.Failed));
+                    throw;
+                }
             }
         }
 

@@ -173,7 +173,7 @@ int main(int argc, char** argv)
 	}
 
 	//Create a configuration object to connect to the application samples/p2p on the test server gc3.stormancer.com
-	auto config = Stormancer::Configuration::create("http://gc3.stormancer.com", "samples", "p2p");
+	auto config = Stormancer::Configuration::create("http://gc3.stormancer.com:81", "samples", "p2p");
 	//Set the port used by the game server.
 	config->serverGamePort = 7777;
 	//Add the plugins required to create a P2P application.

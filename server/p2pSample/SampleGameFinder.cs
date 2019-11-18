@@ -9,7 +9,7 @@ namespace P2p
     {
         public JObject ComputeDataAnalytics(GameFinderContext gameFinderContext)
         {
-            throw new System.NotImplementedException();
+            return new JObject();
         }
 
         public Task<GameFinderResult> FindGames(GameFinderContext gameFinderContext)

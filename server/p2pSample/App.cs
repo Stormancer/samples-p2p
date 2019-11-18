@@ -41,7 +41,7 @@ namespace P2p
             host.AddSceneTemplate(GAMEFINDER_TEMPLATE, (ISceneHost scene)=>{
 
                 scene.AddGameFinder(new Stormancer.Server.GameFinder.GameFinderConfig("default",builder=> {
-                    builder.Register<SampleGameFindingResolver>().As<IGameFinderResolver>();
+                    builder.Register<SampleGameFindingResolver>().As<IGameFinderResolver>().InstancePerRequest();
                     builder.Register<SampleGameFinder>().As<IGameFinder>();
                     builder.Register<SampleGameFinderDataExtractor>().As<IGameFinderDataExtractor>();
                 }));
