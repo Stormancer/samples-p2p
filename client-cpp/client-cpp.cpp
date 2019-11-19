@@ -29,7 +29,7 @@ struct GameFinderParameters
 };
 
 //Gamefinding an connection logic to the game session
-bool sample_p2p(std::shared_ptr<Stormancer::IClient> client,std::string userId, std::string gameId)
+bool sample_p2p(std::shared_ptr<Stormancer::IClient> client, std::string userId, std::string gameId)
 {
 	auto gameFinder = client->dependencyResolver().resolve<Stormancer::GameFinder::GameFinderApi>();
 	auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSessions::GameSession>();
@@ -56,20 +56,41 @@ bool sample_p2p(std::shared_ptr<Stormancer::IClient> client,std::string userId, 
 
 	});
 
-
+	std::cout << "game found." << std::endl;
+	std::cout << "Joining game session" << std::endl;
 
 	//Connect to the game session and establish a P2P connectivity with the host if necessary.
-	auto connectionInfos = gameSession->connectToGameSession(gameFound.data.connectionToken).get();
+	//Custom data is sent to the client
+	//The last parameter is used to decide if the system should create an UDP tunnel to use the P2P system
+	//with an external UDP network engine (like UNet in Unreal)
+	auto connectionInfos = gameSession->connectToGameSession(gameFound.data.connectionToken, "customData", true).get();
+	auto peerConnectedSubscription = gameSession->scene()->onPeerConnected().subscribe([](std::shared_ptr<Stormancer::IP2PScenePeer> remotePeer) {
+		std::cout << "Remote peer connected to client. ";
+		std::cout << remotePeer->sessionId();
+		std::cout << std::endl;
+
+	});
+	auto peerDiscconnectedSubscription = gameSession->scene()->onPeerDisconnected().subscribe([](std::shared_ptr<Stormancer::IP2PScenePeer> remotePeer) {
+		std::cout << "Remote peer disconnected from client. ";
+		std::cout << remotePeer->sessionId();
+		std::cout << std::endl;
+
+	});
+
 	if (connectionInfos.isHost)
 	{
-		std::cout << "Starting as host";
-		//Start game server on the port specified in config->serverGamePort
+		std::cout << std::endl;
+		std::cout << "Starting as host\n";
+		//If useTunnel = true, It's now possible to start a game server on the port specified in config->serverGamePort.
 	}
 	else
 	{
-		std::cout << "Starting as client";
+		std::cout << "P2P connection established with host.\n";
+		std::cout << "Starting as client\n";
 
-		//connect the game client to connectionInfos.endpoint
+		//It's possible to use any other network engine and
+		//connect the game client to connectionInfos.endpoint to
+		//establish a connection to the host through a tunnel.
 	}
 	//Indicates that the game is ready. This is necessary because the host indicates by calling this function 
 	//that it's ready to accept connection from other game clients.
@@ -78,15 +99,17 @@ bool sample_p2p(std::shared_ptr<Stormancer::IClient> client,std::string userId, 
 	Stormancer::Serializer serializer;
 
 	//Wait for user input and broadcast it to all the other peers in P2P.
-	std::cout << std::endl;
-	while (true)
+	std::cout << "Type and hit enter to send messages to all other connected peers." << std::endl;
+
+	bool running = true;
+	while (running)
 	{
-		
+
 		std::string input;
-		std::getline(std::cin,input);
+		std::getline(std::cin, input);
 		input = userId + ": " + input;
 		//Broadcast a message to all other P2P peers
-		gameSession->scene()->send(Stormancer::PeerFilter::matchAllP2P(), "hello", [serializer,input](Stormancer::obytestream& stream) {
+		gameSession->scene()->send(Stormancer::PeerFilter::matchAllP2P(), "hello", [serializer, input](Stormancer::obytestream& stream) {
 			serializer.serialize(stream, input);
 		});
 
@@ -96,68 +119,7 @@ bool sample_p2p(std::shared_ptr<Stormancer::IClient> client,std::string userId, 
 	return connectionInfos.isHost;
 }
 
-//Gamefinding and connection logic to the game session, using the task based asynchronous pattern.
-pplx::task<void> sample_p2p_async(std::shared_ptr<Stormancer::IClient> client, std::string gameId)
-{
-	std::weak_ptr<Stormancer::IClient> wClient = client;
-	auto gameFinder = client->dependencyResolver().resolve<Stormancer::GameFinder::GameFinderApi>();
 
-
-	auto gameFoundTask = gameFinder->waitGameFound();
-	GameFinderParameters p;
-	p.gameId = gameId;
-	//Start the game query
-	return gameFinder->findGame("default", "p2p-sample", p)
-		.then([gameFoundTask]() {
-
-		//Return the gameFound task so that the next continuation runs when this task completes.
-		return gameFoundTask;
-	})
-
-		.then([wClient](Stormancer::GameFinder::GameFoundEvent gameFound) {
-		//We capture a weak pointer so that we don't prevent the client from getting destroyed if the program decides so, 
-		//because we are running asynchronously, anything may happen.
-		auto client = wClient.lock();
-		if (!client)
-		{
-			throw Stormancer::PointerDeletedException();
-		}
-
-		auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSessions::GameSession>();
-
-
-		return gameSession->connectToGameSession(gameFound.data.connectionToken);
-
-	})
-		.then([wClient](Stormancer::GameSessions::GameSessionConnectionParameters connectionInfos) {
-		//We capture a weak pointer so that we don't prevent the client from getting destroyed if the program decides so, 
-		//because we are running asynchronously, anything may happen.
-		auto client = wClient.lock();
-		if (!client)
-		{
-			throw Stormancer::PointerDeletedException();
-		}
-
-		if (connectionInfos.isHost)
-		{
-			std::cout << "Starting as host";
-			//Start game server on the port specified in config->serverGamePort
-		}
-		else
-		{
-			std::cout << "Starting as client";
-
-			//connect the game client to connectionInfos.endpoint
-		}
-
-		auto gameSession = client->dependencyResolver().resolve<Stormancer::GameSessions::GameSession>();
-
-		//Indicates that the game is ready. This is necessary because the host indicates by calling this function 
-		//that it's ready to accept connection from other game clients.
-		gameSession->setPlayerReady().get();
-
-	});
-}
 
 
 
@@ -180,14 +142,14 @@ int main(int argc, char** argv)
 	config->addPlugin(new Stormancer::Users::UsersPlugin());
 	config->addPlugin(new Stormancer::GameFinder::GameFinderPlugin());
 	config->addPlugin(new Stormancer::GameSessions::GameSessionsPlugin());
-	
+
 	//Uncomment to get detailed logging
-	config->logger = std::make_shared<Stormancer::ConsoleLogger>();
+	//config->logger = std::make_shared<Stormancer::ConsoleLogger>();
 
 	//Create a stormancer client
 	auto client = Stormancer::IClient::create(config);
 
-	
+
 	std::string userId = argv[1];
 	std::string gameId = argv[2];
 
@@ -206,7 +168,7 @@ int main(int argc, char** argv)
 	});
 
 
-	bool isHost = sample_p2p(client,userId, gameId);
+	bool isHost = sample_p2p(client, userId, gameId);
 
 
 
